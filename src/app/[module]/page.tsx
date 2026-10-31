@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { AppShell, PageTopbar } from "@/components/app-shell";
 
 const modules: Record<string, { title: string; summary: string; empty: string; action: string }> = {
   bookings: { title: "Bookings", summary: "Review reservations, pickup times, and return dates in one place.", empty: "No bookings yet", action: "Add vehicles to your fleet before taking reservations." },
@@ -11,20 +12,22 @@ const modules: Record<string, { title: string; summary: string; empty: string; a
 export default async function ModulePage({ params }: { params: Promise<{ module: string }> }) {
   const { module } = await params;
   const content = modules[module];
-  if (!content) return <main className="module-wrap"><h1>Page not found</h1><Link href="/">Return to overview</Link></main>;
+  if (!content) return <AppShell><PageTopbar title="Page not found" /><main className="module-wrap"><h1>Page not found</h1><Link href="/">Return to overview</Link></main></AppShell>;
 
   return (
-    <main className="module-wrap">
-      <div className="module-crumb"><Link href="/">Workspace</Link><span>/</span><strong>{content.title}</strong></div>
-      <p className="eyebrow">WORKSPACE</p>
-      <h1>{content.title}</h1>
-      <p className="module-summary">{content.summary}</p>
-      <section className="module-empty">
-        <div className="module-empty-icon" aria-hidden="true">✳</div>
-        <h2>{content.empty}</h2>
-        <p>{content.action}</p>
-        <Link href="/" className="module-back">Back to overview <span aria-hidden="true">→</span></Link>
-      </section>
-    </main>
+    <AppShell active={content.title}>
+      <PageTopbar title={content.title} />
+      <main className="module-wrap">
+        <p className="eyebrow">WORKSPACE</p>
+        <h1>{content.title}</h1>
+        <p className="module-summary">{content.summary}</p>
+        <section className="module-empty">
+          <div className="module-empty-icon" aria-hidden="true">✳</div>
+          <h2>{content.empty}</h2>
+          <p>{content.action}</p>
+          <Link href="/" className="module-back">Back to overview <span aria-hidden="true">→</span></Link>
+        </section>
+      </main>
+    </AppShell>
   );
 }

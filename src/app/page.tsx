@@ -1,13 +1,5 @@
 import Link from "next/link";
-
-const navigation = [
-  { label: "Overview", href: "/", icon: "⌂", active: true },
-  { label: "Bookings", href: "/bookings", icon: "▤" },
-  { label: "Fleet", href: "/fleet", icon: "▰" },
-  { label: "Customers", href: "/customers", icon: "♙" },
-  { label: "Maintenance", href: "/maintenance", icon: "⚙" },
-  { label: "Reports", href: "/reports", icon: "▥" },
-];
+import { AppShell, PageTopbar } from "@/components/app-shell";
 
 const quickLinks = [
   { title: "Add a vehicle", detail: "Grow your fleet", icon: "＋", href: "/fleet" },
@@ -24,55 +16,8 @@ const today = new Intl.DateTimeFormat("en", {
 
 export default function Home() {
   return (
-    <div className="app-shell">
-      <aside className="sidebar">
-        <Link className="brand" href="/" aria-label="Spiritus Rental home">
-          <span className="brand-mark">S</span>
-          <span className="brand-copy"><strong>spiritus</strong><small>RENTAL OPERATIONS</small></span>
-        </Link>
-
-        <div className="workspace-switcher">
-          <span className="workspace-avatar">S</span>
-          <span className="workspace-copy"><strong>Your workspace</strong><small>Rental company</small></span>
-          <span className="chevron">⌄</span>
-        </div>
-
-        <p className="nav-label">WORKSPACE</p>
-        <nav className="primary-nav" aria-label="Main navigation">
-          {navigation.map((item) => (
-            <Link key={item.label} className={`nav-item${item.active ? " is-active" : ""}`} href={item.href}>
-              <span className="nav-icon" aria-hidden="true">{item.icon}</span>
-              <span>{item.label}</span>
-              {item.label === "Bookings" && <span className="nav-count">0</span>}
-            </Link>
-          ))}
-        </nav>
-
-        <div className="sidebar-bottom">
-          <div className="help-card">
-            <span className="help-icon">?</span>
-            <strong>Need a hand?</strong>
-            <span>Get help setting up your workspace.</span>
-            <a href="mailto:support@spiritusglobal.tech">Contact support <span aria-hidden="true">↗</span></a>
-          </div>
-          <button className="profile-button" type="button" aria-label="Account settings">
-            <span className="profile-avatar">N</span>
-            <span className="profile-copy"><strong>Account owner</strong><small>Workspace admin</small></span>
-            <span className="more">···</span>
-          </button>
-        </div>
-      </aside>
-
-      <main className="main-content">
-        <header className="topbar">
-          <div className="breadcrumbs"><span>Workspace</span><span className="crumb-slash">/</span><strong>Overview</strong></div>
-          <div className="topbar-actions">
-            <span className="environment-pill"><i /> Setup in progress</span>
-            <button className="icon-button" type="button" aria-label="Notifications">♧<i className="notification-dot" /></button>
-            <button className="top-avatar" type="button" aria-label="Open profile">N</button>
-          </div>
-        </header>
-
+    <AppShell active="Overview">
+      <PageTopbar title="Overview" />
         <div className="page-wrap">
           <section className="welcome-row">
             <div>
@@ -117,9 +62,9 @@ export default function Home() {
               <div className="stat-foot"><span className="empty-indicator" /> Your renter list will show here</div>
             </article>
             <article className="stat-card stat-card-accent">
-              <div className="stat-top"><span className="stat-label">SETUP PROGRESS</span><span className="stat-icon progress-icon">✳</span></div>
-              <div className="stat-number">1 <span>of 4 steps</span></div>
-              <div className="progress-track"><span /></div>
+              <div className="stat-top"><span className="stat-label">SETUP STATUS</span><span className="stat-icon progress-icon">✳</span></div>
+              <div className="stat-number stat-status">Not started</div>
+              <div className="stat-foot">Add a vehicle to begin</div>
             </article>
           </section>
 
@@ -148,13 +93,12 @@ export default function Home() {
                   </Link>
                 ))}
               </div>
-              <div className="quick-note"><span aria-hidden="true">✦</span> Your setup saves as you go.</div>
+              <div className="quick-note"><span aria-hidden="true">✦</span> Start with your first vehicle.</div>
             </article>
           </section>
 
           <footer className="page-footer"><span>SPIRITUS RENTAL</span><span>Built for the way you move.</span><a href="mailto:support@spiritusglobal.tech">Help & support ↗</a></footer>
         </div>
-      </main>
-    </div>
+    </AppShell>
   );
 }
