@@ -1,0 +1,513 @@
+generator client {
+  provider = "prisma-client"
+  output   = "../src/generated/prisma"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+enum Currency { USD ZWG ZAR }
+enum MembershipRole { OWNER ADMIN BRANCH_MANAGER RESERVATIONS_AGENT FLEET_OFFICER FINANCE_OFFICER MAINTENANCE_OFFICER VIEWER }
+enum MembershipStatus { INVITED ACTIVE SUSPENDED }
+enum VehicleStatus { AVAILABLE RESERVED RENTED MAINTENANCE INACTIVE }
+enum BookingStatus { DRAFT HELD CONFIRMED CANCELLED EXPIRED COMPLETED }
+enum RentalStatus { PENDING_CHECKOUT ACTIVE OVERDUE RETURNED CLOSED DISPUTED }
+enum InvoiceStatus { DRAFT ISSUED PARTIALLY_PAID PAID VOID }
+enum PaymentStatus { PENDING SUCCEEDED FAILED REVERSED REFUNDED }
+enum DepositEntryType { COLLECTION APPLICATION REFUND FORFEITURE REVERSAL }
+enum InspectionType { CHECKOUT CHECKIN INTERIM }
+enum MaintenanceStatus { OPEN SCHEDULED IN_PROGRESS COMPLETED CANCELLED }
+enum SubscriptionStatus { TRIAL ACTIVE PAST_DUE SUSPENDED CANCELLED }
+enum DocumentType { NATIONAL_ID PASSPORT DRIVING_LICENCE VEHICLE_REGISTRATION INSURANCE ROADWORTHINESS CONTRACT OTHER }
+enum PricingUnit { DAY WEEK MONTH HOUR }
+enum NotificationChannel { EMAIL SMS WHATSAPP IN_APP }
+enum IncidentStatus { OPEN INVESTIGATING RESOLVED CLOSED }
+
+model User {
+  id String @id @default(cuid())
+  name String
+  email String @unique
+  emailVerified Boolean @default(false)
+  image String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  sessions Session[]
+  accounts Account[]
+  memberships Membership[]
+  auditLogs AuditLog[] @relation("AuditActor")
+}
+model Session {
+  id String @id @default(cuid())
+  expiresAt DateTime
+  token String @unique
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  ipAddress String?
+  userAgent String?
+  userId String
+  user User @relation(fields:[userId], references:[id], onDelete:Cascade)
+}
+model Account {
+  id String @id @default(cuid())
+  accountId String
+  providerId String
+  userId String
+  accessToken String? @db.Text
+  refreshToken String? @db.Text
+  idToken String? @db.Text
+  accessTokenExpiresAt DateTime?
+  refreshTokenExpiresAt DateTime?
+  scope String?
+  password String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  user User @relation(fields:[userId], references:[id], onDelete:Cascade)
+  @@unique([providerId,accountId])
+}
+model Verification {
+  id String @id @default(cuid())
+  identifier String
+  value String @db.Text
+  expiresAt DateTime
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  @@index([identifier])
+}
+model Organization {
+  id String @id @default(cuid())
+  name String
+  slug String @unique
+  legalName String?
+  registrationNumber String?
+  taxNumber String?
+  phone String?
+  email String?
+  timezone String @default("Africa/Harare")
+  defaultCurrency Currency @default(USD)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  branches Branch[]
+  memberships Membership[]
+  categories VehicleCategory[]
+  vehicles Vehicle[]
+  customers Customer[]
+  ratePlans RatePlan[]
+  bookings Booking[]
+  rentals Rental[]
+  invoices Invoice[]
+  payments Payment[]
+  depositEntries DepositEntry[]
+  maintenanceJobs MaintenanceJob[]
+  expenses VehicleExpense[]
+  incidents Incident[]
+  notifications Notification[]
+  auditLogs AuditLog[]
+  documents Document[]
+  subscription Subscription?
+  integrationConfigs IntegrationConfig[]
+  outboxEvents OutboxEvent[]
+}
+model Membership {
+  id String @id @default(cuid())
+  userId String
+  organizationId String
+  role MembershipRole
+  status MembershipStatus @default(INVITED)
+  branchId String?
+  createdAt DateTime @default(now())
+  user User @relation(fields:[userId],references:[id])
+  organization Organization @relation(fields:[organizationId],references:[id])
+  branch Branch? @relation(fields:[branchId],references:[id])
+  @@unique([userId,organizationId])
+  @@index([organizationId,role])
+}
+model Branch {
+  id String @id @default(cuid())
+  organizationId String
+  name String
+  code String
+  address String?
+  city String?
+  phone String?
+  isActive Boolean @default(true)
+  organization Organization @relation(fields:[organizationId],references:[id])
+  memberships Membership[]
+  vehicles Vehicle[]
+  pickups Booking[] @relation("PickupBranch")
+  returns Booking[] @relation("ReturnBranch")
+  @@unique([organizationId,code])
+}
+model VehicleCategory {
+  id String @id @default(cuid())
+  organizationId String
+  name String
+  description String?
+  seats Int?
+  transmission String?
+  organization Organization @relation(fields:[organizationId],references:[id])
+  vehicles Vehicle[]
+  ratePlans RatePlan[]
+  @@unique([organizationId,name])
+}
+model Vehicle {
+  id String @id @default(cuid())
+  organizationId String
+  branchId String
+  categoryId String
+  registration String
+  vin String?
+  make String
+  model String
+  year Int
+  color String?
+  fuelType String?
+  odometerKm Int @default(0)
+  status VehicleStatus @default(AVAILABLE)
+  active Boolean @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  organization Organization @relation(fields:[organizationId],references:[id])
+  branch Branch @relation(fields:[branchId],references:[id])
+  category VehicleCategory @relation(fields:[categoryId],references:[id])
+  bookings Booking[]
+  rentals Rental[]
+  inspections Inspection[]
+  maintenanceJobs MaintenanceJob[]
+  expenses VehicleExpense[]
+  incidents Incident[]
+  documents Document[]
+  @@unique([organizationId,registration])
+  @@index([organizationId,status,branchId])
+}
+model Customer {
+  id String @id @default(cuid())
+  organizationId String
+  firstName String
+  lastName String
+  email String?
+  phone String
+  address String?
+  countryCode String @default("ZW")
+  verifiedAt DateTime?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  organization Organization @relation(fields:[organizationId],references:[id])
+  drivers Driver[]
+  bookings Booking[]
+  rentals Rental[]
+  invoices Invoice[]
+  documents Document[]
+  @@index([organizationId,phone])
+  @@index([organizationId,email])
+}
+model Driver {
+  id String @id @default(cuid())
+  customerId String
+  fullName String
+  licenceNumber String
+  licenceCountry String @default("ZW")
+  licenceExpiry DateTime
+  dateOfBirth DateTime?
+  customer Customer @relation(fields:[customerId],references:[id])
+  rentalDrivers RentalDriver[]
+  @@index([customerId])
+}
+model RatePlan {
+  id String @id @default(cuid())
+  organizationId String
+  categoryId String
+  name String
+  unit PricingUnit @default(DAY)
+  currency Currency @default(USD)
+  baseAmountMinor BigInt
+  depositAmountMinor BigInt @default(0)
+  includedKm Int?
+  extraKmAmountMinor BigInt @default(0)
+  active Boolean @default(true)
+  validFrom DateTime?
+  validUntil DateTime?
+  organization Organization @relation(fields:[organizationId],references:[id])
+  category VehicleCategory @relation(fields:[categoryId],references:[id])
+  bookings Booking[]
+  @@index([organizationId,categoryId,active])
+}
+model Booking {
+  id String @id @default(cuid())
+  organizationId String
+  reference String
+  customerId String
+  vehicleId String?
+  ratePlanId String?
+  pickupBranchId String
+  returnBranchId String
+  startsAt DateTime
+  endsAt DateTime
+  holdExpiresAt DateTime?
+  status BookingStatus @default(DRAFT)
+  currency Currency @default(USD)
+  quotedAmountMinor BigInt @default(0)
+  depositRequiredMinor BigInt @default(0)
+  notes String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  organization Organization @relation(fields:[organizationId],references:[id])
+  customer Customer @relation(fields:[customerId],references:[id])
+  vehicle Vehicle? @relation(fields:[vehicleId],references:[id])
+  ratePlan RatePlan? @relation(fields:[ratePlanId],references:[id])
+  pickupBranch Branch @relation("PickupBranch",fields:[pickupBranchId],references:[id])
+  returnBranch Branch @relation("ReturnBranch",fields:[returnBranchId],references:[id])
+  rental Rental?
+  @@unique([organizationId,reference])
+  @@index([organizationId,status,startsAt,endsAt])
+  @@index([vehicleId,startsAt,endsAt])
+}
+model Rental {
+  id String @id @default(cuid())
+  organizationId String
+  bookingId String @unique
+  vehicleId String
+  customerId String
+  status RentalStatus @default(PENDING_CHECKOUT)
+  checkoutAt DateTime?
+  dueAt DateTime
+  returnedAt DateTime?
+  checkoutOdometerKm Int?
+  returnOdometerKm Int?
+  agreementObjectKey String?
+  agreementSignedAt DateTime?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  organization Organization @relation(fields:[organizationId],references:[id])
+  booking Booking @relation(fields:[bookingId],references:[id])
+  vehicle Vehicle @relation(fields:[vehicleId],references:[id])
+  customer Customer @relation(fields:[customerId],references:[id])
+  drivers RentalDriver[]
+  inspections Inspection[]
+  invoices Invoice[]
+  incidents Incident[]
+  @@index([organizationId,status,dueAt])
+}
+model RentalDriver {
+  rentalId String
+  driverId String
+  primary Boolean @default(false)
+  rental Rental @relation(fields:[rentalId],references:[id])
+  driver Driver @relation(fields:[driverId],references:[id])
+  @@id([rentalId,driverId])
+}
+model Inspection {
+  id String @id @default(cuid())
+  rentalId String
+  vehicleId String
+  type InspectionType
+  inspectedAt DateTime @default(now())
+  odometerKm Int
+  fuelPercent Int
+  notes String?
+  customerSignedAt DateTime?
+  signatureObjectKey String?
+  rental Rental @relation(fields:[rentalId],references:[id])
+  vehicle Vehicle @relation(fields:[vehicleId],references:[id])
+  photos InspectionPhoto[]
+  @@index([rentalId,type])
+}
+model InspectionPhoto {
+  id String @id @default(cuid())
+  inspectionId String
+  objectKey String
+  angle String?
+  damageNotes String?
+  inspection Inspection @relation(fields:[inspectionId],references:[id],onDelete:Cascade)
+}
+model Invoice {
+  id String @id @default(cuid())
+  organizationId String
+  customerId String
+  rentalId String?
+  number String
+  currency Currency
+  status InvoiceStatus @default(DRAFT)
+  subtotalMinor BigInt @default(0)
+  taxMinor BigInt @default(0)
+  totalMinor BigInt @default(0)
+  paidMinor BigInt @default(0)
+  issuedAt DateTime?
+  dueAt DateTime?
+  createdAt DateTime @default(now())
+  organization Organization @relation(fields:[organizationId],references:[id])
+  customer Customer @relation(fields:[customerId],references:[id])
+  rental Rental? @relation(fields:[rentalId],references:[id])
+  lines InvoiceLine[]
+  allocations PaymentAllocation[]
+  @@unique([organizationId,number])
+  @@index([organizationId,status,dueAt])
+}
+model InvoiceLine {
+  id String @id @default(cuid())
+  invoiceId String
+  description String
+  quantity Decimal @db.Decimal(12,3)
+  unitAmountMinor BigInt
+  lineTotalMinor BigInt
+  invoice Invoice @relation(fields:[invoiceId],references:[id],onDelete:Cascade)
+}
+model Payment {
+  id String @id @default(cuid())
+  organizationId String
+  provider String
+  providerReference String?
+  idempotencyKey String
+  amountMinor BigInt
+  currency Currency
+  status PaymentStatus @default(PENDING)
+  receivedAt DateTime?
+  createdAt DateTime @default(now())
+  organization Organization @relation(fields:[organizationId],references:[id])
+  allocations PaymentAllocation[]
+  depositEntries DepositEntry[]
+  @@unique([organizationId,idempotencyKey])
+  @@unique([provider,providerReference])
+}
+model PaymentAllocation {
+  id String @id @default(cuid())
+  paymentId String
+  invoiceId String
+  amountMinor BigInt
+  payment Payment @relation(fields:[paymentId],references:[id])
+  invoice Invoice @relation(fields:[invoiceId],references:[id])
+  @@index([invoiceId])
+}
+model DepositEntry {
+  id String @id @default(cuid())
+  organizationId String
+  bookingId String
+  paymentId String?
+  type DepositEntryType
+  amountMinor BigInt
+  currency Currency
+  reason String?
+  createdAt DateTime @default(now())
+  organization Organization @relation(fields:[organizationId],references:[id])
+  payment Payment? @relation(fields:[paymentId],references:[id])
+  @@index([organizationId,bookingId,createdAt])
+}
+model MaintenanceJob {
+  id String @id @default(cuid())
+  organizationId String
+  vehicleId String
+  title String
+  description String?
+  status MaintenanceStatus @default(OPEN)
+  dueAt DateTime?
+  startedAt DateTime?
+  completedAt DateTime?
+  estimatedCostMinor BigInt?
+  actualCostMinor BigInt?
+  currency Currency @default(USD)
+  organization Organization @relation(fields:[organizationId],references:[id])
+  vehicle Vehicle @relation(fields:[vehicleId],references:[id])
+  @@index([organizationId,status,dueAt])
+}
+model VehicleExpense {
+  id String @id @default(cuid())
+  organizationId String
+  vehicleId String
+  category String
+  description String?
+  amountMinor BigInt
+  currency Currency
+  incurredAt DateTime
+  organization Organization @relation(fields:[organizationId],references:[id])
+  vehicle Vehicle @relation(fields:[vehicleId],references:[id])
+  @@index([organizationId,incurredAt])
+}
+model Incident {
+  id String @id @default(cuid())
+  organizationId String
+  vehicleId String
+  rentalId String?
+  description String
+  status IncidentStatus @default(OPEN)
+  occurredAt DateTime
+  organization Organization @relation(fields:[organizationId],references:[id])
+  vehicle Vehicle @relation(fields:[vehicleId],references:[id])
+  rental Rental? @relation(fields:[rentalId],references:[id])
+}
+model Document {
+  id String @id @default(cuid())
+  organizationId String
+  customerId String?
+  vehicleId String?
+  type DocumentType
+  objectKey String
+  mimeType String
+  expiresAt DateTime?
+  createdAt DateTime @default(now())
+  organization Organization @relation(fields:[organizationId],references:[id])
+  customer Customer? @relation(fields:[customerId],references:[id])
+  vehicle Vehicle? @relation(fields:[vehicleId],references:[id])
+  @@index([organizationId,type,expiresAt])
+}
+model Subscription {
+  id String @id @default(cuid())
+  organizationId String @unique
+  planCode String
+  status SubscriptionStatus @default(TRIAL)
+  currentPeriodEndsAt DateTime?
+  vehicleLimit Int
+  userLimit Int
+  providerCustomerId String?
+  providerSubscriptionId String? @unique
+  organization Organization @relation(fields:[organizationId],references:[id])
+}
+model IntegrationConfig {
+  id String @id @default(cuid())
+  organizationId String
+  provider String
+  enabled Boolean @default(false)
+  encryptedConfig String @db.Text
+  organization Organization @relation(fields:[organizationId],references:[id])
+  @@unique([organizationId,provider])
+}
+model Notification {
+  id String @id @default(cuid())
+  organizationId String
+  channel NotificationChannel
+  recipient String
+  templateKey String
+  payload Json
+  status String @default("PENDING")
+  attempts Int @default(0)
+  sentAt DateTime?
+  createdAt DateTime @default(now())
+  organization Organization @relation(fields:[organizationId],references:[id])
+  @@index([organizationId,status,createdAt])
+}
+model AuditLog {
+  id String @id @default(cuid())
+  organizationId String
+  actorId String?
+  action String
+  entityType String
+  entityId String
+  before Json?
+  after Json?
+  ipAddress String?
+  createdAt DateTime @default(now())
+  organization Organization @relation(fields:[organizationId],references:[id])
+  actor User? @relation("AuditActor",fields:[actorId],references:[id])
+  @@index([organizationId,entityType,entityId,createdAt])
+}
+model OutboxEvent {
+  id String @id @default(cuid())
+  organizationId String
+  eventType String
+  aggregateId String
+  payload Json
+  processedAt DateTime?
+  attempts Int @default(0)
+  createdAt DateTime @default(now())
+  organization Organization @relation(fields:[organizationId],references:[id])
+  @@index([processedAt,createdAt])
+}
