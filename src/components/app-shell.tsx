@@ -1,5 +1,8 @@
+"use client";
+
 import Link from "next/link";
 import type { ReactNode } from "react";
+import { useRentalData } from "@/lib/rental-data";
 
 const navigation = [
   { label: "Overview", href: "/", icon: "⌂" },
@@ -36,5 +39,6 @@ export function AppShell({ children, active = "Overview" }: { children: ReactNod
 }
 
 export function PageTopbar({ title }: { title: string }) {
-  return <header className="topbar"><div className="breadcrumbs"><span>Workspace</span><span className="crumb-slash">/</span><strong>{title}</strong></div><div className="topbar-actions"><span className="environment-pill"><i /> Setup in progress</span><button className="icon-button" type="button" aria-label="Notifications">♧<i className="notification-dot" /></button><button className="top-avatar" type="button" aria-label="Open profile">N</button></div></header>;
+  const { logout } = useRentalData();
+  return <header className="topbar"><div className="breadcrumbs"><span>Workspace</span><span className="crumb-slash">/</span><strong>{title}</strong></div><div className="topbar-actions"><span className="environment-pill"><i /> Setup in progress</span><button className="icon-button" type="button" aria-label="Notifications">♧<i className="notification-dot" /></button><button className="top-avatar" type="button" aria-label="Sign out" title="Sign out" onClick={() => void logout()}>N</button></div></header>;
 }

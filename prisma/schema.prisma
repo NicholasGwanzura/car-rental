@@ -511,3 +511,9 @@ model OutboxEvent {
   organization Organization @relation(fields:[organizationId],references:[id])
   @@index([processedAt,createdAt])
 }
+
+model RentalWorkspaceState {
+  id        String   @id
+  payload   Json     @db.JsonB
+  updatedAt DateTime @default(now()) @updatedAt @db.Timestamptz(6)
+}
