@@ -53,8 +53,23 @@ export type MaintenanceJob = {
   note: string;
 };
 
+export type InspectionPhoto = { id: string; name: string; dataUrl: string };
+export type PrebookingInspection = {
+  id: string;
+  customerId: string;
+  vehicleId: string;
+  bookingId?: string;
+  inspectionDate: string;
+  odometerKm: number;
+  fuelPercent: number;
+  condition: "Good" | "Fair" | "Needs attention";
+  notes: string;
+  photos: InspectionPhoto[];
+  createdAt: string;
+};
+
 export type CompanyProfile = { name: string; email: string; phone: string; address: string; invoicePrefix: string; paymentInstructions: string };
-type StoreData = { vehicles: Vehicle[]; customers: Customer[]; bookings: Booking[]; maintenance: MaintenanceJob[]; company: CompanyProfile };
+type StoreData = { vehicles: Vehicle[]; customers: Customer[]; bookings: Booking[]; maintenance: MaintenanceJob[]; inspections: PrebookingInspection[]; company: CompanyProfile };
 type RentalContextValue = StoreData & {
   ready: boolean;
   addVehicle: (vehicle: Omit<Vehicle, "id" | "createdAt">) => void;
@@ -63,17 +78,19 @@ type RentalContextValue = StoreData & {
   updateBooking: (id: string, changes: Partial<Booking>) => void;
   addMaintenance: (job: Omit<MaintenanceJob, "id">) => void;
   updateMaintenance: (id: string, changes: Partial<MaintenanceJob>) => void;
+  addInspection: (inspection: Omit<PrebookingInspection, "id" | "createdAt">) => PrebookingInspection;
   updateCompany: (company: CompanyProfile) => void;
   logout: () => Promise<void>;
 };
 
 const STORAGE_KEY = "spiritus-rental-workspace-v1";
 const defaultCompany: CompanyProfile = { name: "Your rental company", email: "", phone: "", address: "", invoicePrefix: "INV", paymentInstructions: "" };
-const emptyData: StoreData = { vehicles: [], customers: [], bookings: [], maintenance: [], company: defaultCompany };
+const emptyData: StoreData = { vehicles: [], customers: [], bookings: [], maintenance: [], inspections: [], company: defaultCompany };
 const RentalContext = createContext<RentalContextValue | null>(null);
 
 function WorkspaceLogin({ onSuccess }: { onSuccess: (data: StoreData) => void }) {
   const [password, setPassword] = useState("");
+  const [showPassword, setShowPassword] = useState(false);
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
   async function submit(event: FormEvent<HTMLFormElement>) {
@@ -85,11 +102,16 @@ function WorkspaceLogin({ onSuccess }: { onSuccess: (data: StoreData) => void })
       const workspace = await fetch("/api/workspace", { cache: "no-store" });
       const stored = await workspace.json();
       if (!workspace.ok) throw new Error(stored.error ?? "Could not load your workspace.");
+      setPassword("");
       onSuccess({ ...emptyData, ...stored.data });
     } catch (reason) { setError(reason instanceof Error ? reason.message : "Could not sign in."); }
     finally { setBusy(false); }
   }
-  return <main className="workspace-login"><form className="workspace-login-card" onSubmit={submit}><div className="brand-mark login-brand">S</div><p className="eyebrow">SPIRITUS RENTAL</p><h1>Welcome back<span>.</span></h1><p>Sign in to your rental workspace.</p><label className="form-field"><span>Workspace password</span><input type="password" autoComplete="current-password" required value={password} onChange={(event) => setPassword(event.target.value)} /></label>{error && <p className="login-error" role="alert">{error}</p>}<button className="button button-primary login-submit" type="submit" disabled={busy}>{busy ? "Signing in…" : "Sign in"}</button></form></main>;
+  return <main className="workspace-login"><form className="workspace-login-card" onSubmit={submit}>
+    <div className="brand-mark login-brand">S</div><p className="eyebrow">SPIRITUS RENTAL</p><h1>Welcome back<span>.</span></h1><p>Sign in to your rental workspace.</p>
+    <label className="form-field"><span>Workspace password</span><div className="login-password-wrap"><input name="password" type={showPassword ? "text" : "password"} autoComplete="current-password" autoFocus required value={password} onChange={(event) => setPassword(event.target.value)} /><button className="password-visibility" type="button" aria-label={showPassword ? "Hide password" : "Show password"} aria-pressed={showPassword} onClick={() => setShowPassword((value) => !value)}>{showPassword ? "Hide" : "Show"}</button></div></label>
+    {error && <p className="login-error" role="alert">{error}</p>}<button className="button button-primary login-submit" type="submit" disabled={busy}>{busy ? "Signing in…" : "Sign in"}</button>
+  </form></main>;
 }
 
 function makeId() {
@@ -173,6 +195,11 @@ export function RentalDataProvider({ children }: { children: ReactNode }) {
     updateBooking: (id, changes) => updateData((current) => ({ ...current, bookings: current.bookings.map((booking) => booking.id === id ? { ...booking, ...changes } : booking) })),
     addMaintenance: (job) => updateData((current) => ({ ...current, maintenance: [{ ...job, id: makeId() }, ...current.maintenance] })),
     updateMaintenance: (id, changes) => updateData((current) => ({ ...current, maintenance: current.maintenance.map((job) => job.id === id ? { ...job, ...changes } : job) })),
+    addInspection: (inspection) => {
+      const created: PrebookingInspection = { ...inspection, id: makeId(), createdAt: new Date().toISOString() };
+      updateData((current) => ({ ...current, inspections: [created, ...current.inspections] }));
+      return created;
+    },
     updateCompany: (company) => updateData((current) => ({ ...current, company })),
     logout: async () => { await fetch("/api/auth/logout", { method: "POST" }); setAuthRequired(true); },
   }), [data, ready, databaseConnected]);

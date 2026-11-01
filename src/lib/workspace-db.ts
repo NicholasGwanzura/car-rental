@@ -1,7 +1,7 @@
 import { Pool } from "pg";
 
-type WorkspaceData = { vehicles: unknown[]; customers: unknown[]; bookings: unknown[]; maintenance: unknown[] };
-const EMPTY: WorkspaceData = { vehicles: [], customers: [], bookings: [], maintenance: [] };
+type WorkspaceData = { vehicles: unknown[]; customers: unknown[]; bookings: unknown[]; maintenance: unknown[]; inspections?: unknown[] };
+const EMPTY: WorkspaceData = { vehicles: [], customers: [], bookings: [], maintenance: [], inspections: [] };
 const globalForPool = globalThis as typeof globalThis & { rentalWorkspacePool?: Pool; rentalWorkspaceSchema?: Promise<void> };
 
 function pool() {
@@ -28,7 +28,8 @@ async function ensureTable() {
 function isWorkspaceData(value: unknown): value is WorkspaceData {
   if (!value || typeof value !== "object") return false;
   const record = value as Record<string, unknown>;
-  return ["vehicles", "customers", "bookings", "maintenance"].every((key) => Array.isArray(record[key]));
+  return ["vehicles", "customers", "bookings", "maintenance"].every((key) => Array.isArray(record[key]))
+    && (record.inspections === undefined || Array.isArray(record.inspections));
 }
 
 export async function loadWorkspaceData(): Promise<WorkspaceData> {

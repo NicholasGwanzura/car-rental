@@ -9,6 +9,7 @@ const navigation = [
   { label: "Bookings", href: "/bookings", icon: "bookings" },
   { label: "Fleet", href: "/fleet", icon: "fleet" },
   { label: "Customers", href: "/customers", icon: "customers" },
+  { label: "Inspections", href: "/inspections", icon: "inspections" },
   { label: "Maintenance", href: "/maintenance", icon: "maintenance" },
   { label: "Reports", href: "/reports", icon: "reports" },
   { label: "Billing", href: "/billing", icon: "billing" },
@@ -24,6 +25,7 @@ function NavIcon({ name }: { name: string }) {
     bookings: <><rect x="4" y="5" width="16" height="15" rx="2.5"/><path d="M8 3v4m8-4v4M4 9h16M8 13h3m-3 3h6"/></>,
     fleet: <><path d="m4 13 1.5-5h13l1.5 5v5h-2v-2H6v2H4z"/><path d="M5.5 13h13M7 8l1-3h8l1 3M7.5 13h.01m9 0h.01"/></>,
     customers: <><circle cx="9" cy="8" r="3"/><path d="M3.5 19v-1.5A4.5 4.5 0 0 1 8 13h2a4.5 4.5 0 0 1 4.5 4.5V19zM16 5.5a3 3 0 0 1 0 5.8M17 13h.5a3 3 0 0 1 3 3v3h-3"/></>,
+    inspections: <><path d="M8 4.5h8a2 2 0 0 1 2 2V20H6V6.5a2 2 0 0 1 2-2Z"/><path d="M9 4.5V3h6v1.5M9 10h6m-6 3.5h6m-6 3.5h3"/></>,
     maintenance: <><path d="M14 6.5a4 4 0 0 0-5.2 5.2l-5.1 5.1a2 2 0 0 0 2.8 2.8l5.1-5.1A4 4 0 0 0 16.8 9l-2.5 2.5-2.8-2.8z"/><path d="m15 4 5 5"/></>,
     reports: <><path d="M4 19V5m0 14h16"/><path d="m7 15 4-4 3 2 5-6"/><path d="M16 7h3v3"/></>,
     billing: <><rect x="3.5" y="5" width="17" height="14" rx="2.5"/><path d="M3.5 9.5h17M7 14h4m2.5 0H17"/></>,
@@ -40,6 +42,7 @@ function NavLink({ item, active }: { item: (typeof navigation)[number]; active: 
 
 export function AppShell({ children, active = "Overview" }: { children: ReactNode; active?: string }) {
   const [moreOpen, setMoreOpen] = useState(false);
+  const { logout, company } = useRentalData();
   const moreActive = mobileMore.some((item) => item.label === active);
   return <div className="app-shell">
     <aside className="sidebar">
@@ -54,7 +57,7 @@ export function AppShell({ children, active = "Overview" }: { children: ReactNod
       </nav>
       <div className="sidebar-bottom">
         <div className="help-card"><span className="help-icon">?</span><strong>Need a hand?</strong><span>Get help setting up your workspace.</span><a href="mailto:support@spiritusglobal.tech">Contact support <span aria-hidden="true">↗</span></a></div>
-        <button className="profile-button" type="button" aria-label="Account settings"><span className="profile-avatar">N</span><span className="profile-copy"><strong>Account owner</strong><small>Workspace admin</small></span><span className="more">···</span></button>
+        <button className="profile-button" type="button" aria-label="Sign out of workspace" title="Sign out" onClick={() => void logout()}><span className="profile-avatar">{(company.name || "S").trim().slice(0, 1).toUpperCase()}</span><span className="profile-copy"><strong>Workspace account</strong><small>Sign out</small></span><svg className="logout-mark" viewBox="0 0 24 24" aria-hidden="true"><path d="M10 4H5v16h5m4-4 4-4-4-4m4 4H9"/></svg></button>
       </div>
     </aside>
     <nav className="mobile-nav" aria-label="Mobile navigation">
@@ -70,5 +73,5 @@ export function AppShell({ children, active = "Overview" }: { children: ReactNod
 
 export function PageTopbar({ title }: { title: string }) {
   const { logout } = useRentalData();
-  return <header className="topbar"><div className="breadcrumbs"><span>Workspace</span><span className="crumb-slash">/</span><strong>{title}</strong></div><div className="topbar-actions"><span className="environment-pill"><i /> Setup in progress</span><button className="top-avatar" type="button" aria-label="Sign out" title="Sign out" onClick={() => void logout()}>N</button></div></header>;
+  return <header className="topbar"><div className="breadcrumbs"><span>Workspace</span><span className="crumb-slash">/</span><strong>{title}</strong></div><div className="topbar-actions"><button className="logout-button" type="button" aria-label="Sign out" title="Sign out of workspace" onClick={() => void logout()}><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M10 4H5v16h5m4-4 4-4-4-4m4 4H9"/></svg><span>Sign out</span></button></div></header>;
 }
