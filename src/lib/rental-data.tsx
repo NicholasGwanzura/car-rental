@@ -24,6 +24,7 @@ export type Customer = {
 };
 
 export type BookingStatus = "Confirmed" | "Active" | "Completed" | "Cancelled";
+export type PaymentStatus = "Paid" | "Unpaid";
 export type Booking = {
   id: string;
   reference: string;
@@ -33,6 +34,7 @@ export type Booking = {
   endDate: string;
   total: number;
   status: BookingStatus;
+  paymentStatus?: PaymentStatus;
   note: string;
   checkoutOdometer?: number;
   checkoutFuel?: number;
@@ -51,7 +53,8 @@ export type MaintenanceJob = {
   note: string;
 };
 
-type StoreData = { vehicles: Vehicle[]; customers: Customer[]; bookings: Booking[]; maintenance: MaintenanceJob[] };
+export type CompanyProfile = { name: string; email: string; phone: string; address: string; invoicePrefix: string; paymentInstructions: string };
+type StoreData = { vehicles: Vehicle[]; customers: Customer[]; bookings: Booking[]; maintenance: MaintenanceJob[]; company: CompanyProfile };
 type RentalContextValue = StoreData & {
   ready: boolean;
   addVehicle: (vehicle: Omit<Vehicle, "id" | "createdAt">) => void;
@@ -60,11 +63,13 @@ type RentalContextValue = StoreData & {
   updateBooking: (id: string, changes: Partial<Booking>) => void;
   addMaintenance: (job: Omit<MaintenanceJob, "id">) => void;
   updateMaintenance: (id: string, changes: Partial<MaintenanceJob>) => void;
+  updateCompany: (company: CompanyProfile) => void;
   logout: () => Promise<void>;
 };
 
 const STORAGE_KEY = "spiritus-rental-workspace-v1";
-const emptyData: StoreData = { vehicles: [], customers: [], bookings: [], maintenance: [] };
+const defaultCompany: CompanyProfile = { name: "Your rental company", email: "", phone: "", address: "", invoicePrefix: "INV", paymentInstructions: "" };
+const emptyData: StoreData = { vehicles: [], customers: [], bookings: [], maintenance: [], company: defaultCompany };
 const RentalContext = createContext<RentalContextValue | null>(null);
 
 function WorkspaceLogin({ onSuccess }: { onSuccess: (data: StoreData) => void }) {
@@ -168,6 +173,7 @@ export function RentalDataProvider({ children }: { children: ReactNode }) {
     updateBooking: (id, changes) => updateData((current) => ({ ...current, bookings: current.bookings.map((booking) => booking.id === id ? { ...booking, ...changes } : booking) })),
     addMaintenance: (job) => updateData((current) => ({ ...current, maintenance: [{ ...job, id: makeId() }, ...current.maintenance] })),
     updateMaintenance: (id, changes) => updateData((current) => ({ ...current, maintenance: current.maintenance.map((job) => job.id === id ? { ...job, ...changes } : job) })),
+    updateCompany: (company) => updateData((current) => ({ ...current, company })),
     logout: async () => { await fetch("/api/auth/logout", { method: "POST" }); setAuthRequired(true); },
   }), [data, ready, databaseConnected]);
 

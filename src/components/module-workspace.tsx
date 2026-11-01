@@ -3,6 +3,8 @@
 import Link from "next/link";
 import { useState, type FormEvent, type ReactNode } from "react";
 import { AppShell, PageTopbar } from "@/components/app-shell";
+import { BillingWorkspace } from "@/components/billing-workspace";
+import { CompanySettingsWorkspace } from "@/components/company-settings-workspace";
 import { formatMoney, nightsBetween, useRentalData, type Booking, type Customer, type MaintenanceJob, type Vehicle } from "@/lib/rental-data";
 
 const pageCopy: Record<string, { title: string; summary: string; action?: string }> = {
@@ -11,6 +13,8 @@ const pageCopy: Record<string, { title: string; summary: string; action?: string
   customers: { title: "Customers", summary: "Keep renter contact and licence details ready for their next trip.", action: "Add customer" },
   maintenance: { title: "Maintenance", summary: "Schedule service and keep vehicles safe and road-ready.", action: "Schedule service" },
   reports: { title: "Reports", summary: "A clear view of bookings, revenue, and how your fleet is being used." },
+  billing: { title: "Billing", summary: "Review rental charges, record payment status, and prepare customer invoices." },
+  settings: { title: "Company settings", summary: "Manage business details that appear on customer invoices." },
 };
 
 function dateInputValue(date: Date) {
@@ -213,6 +217,8 @@ function LoadingState() { return <div className="loading-state"><span className=
 
 export function ModuleWorkspace({ module }: { module: string }) {
   const page = pageCopy[module]; const [open, setOpen] = useState(false);
+  if (module === "billing") return <BillingWorkspace />;
+  if (module === "settings") return <CompanySettingsWorkspace />;
   if (!page) return <AppShell><PageTopbar title="Page not found" /><main className="module-wrap"><h1>Page not found</h1><Link href="/">Return to overview</Link></main></AppShell>;
   const Action = module === "reports" ? null : <button className="button button-primary page-action" onClick={() => setOpen(true)}><span aria-hidden="true">＋</span>{page.action}</button>;
   return <AppShell active={page.title}>
