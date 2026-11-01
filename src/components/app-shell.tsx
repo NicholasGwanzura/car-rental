@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useState, type ReactNode } from "react";
+import { useEffect, useRef, useState, type ReactNode } from "react";
 import { useRentalData } from "@/lib/rental-data";
 
 const navigation = [
@@ -18,7 +18,7 @@ const navigation = [
 const mobilePrimary = navigation.slice(0, 4);
 const mobileMore = navigation.slice(4);
 
-function NavIcon({ name }: { name: string }) {
+export function NavIcon({ name }: { name: string }) {
   const common = { fill: "none", stroke: "currentColor", strokeWidth: 1.7, strokeLinecap: "round" as const, strokeLinejoin: "round" as const };
   const paths: Record<string, ReactNode> = {
     overview: <><path d="m3.5 10 8.5-7 8.5 7"/><path d="M5.5 9v10h13V9M9 19v-6h6v6"/></>,
@@ -35,15 +35,25 @@ function NavIcon({ name }: { name: string }) {
 }
 
 function NavLink({ item, active }: { item: (typeof navigation)[number]; active: string }) {
-  return <Link key={item.label} className={`nav-item${item.label === active ? " is-active" : ""}`} href={item.href} aria-current={item.label === active ? "page" : undefined}>
+  return <Link key={item.label} className={`nav-item${item.label === active ? " is-active" : ""}`} href={item.href} aria-label={item.label} title={item.label} aria-current={item.label === active ? "page" : undefined}>
     <span className="nav-icon"><NavIcon name={item.icon} /></span><span>{item.label}</span>
   </Link>;
 }
 
 export function AppShell({ children, active = "Overview" }: { children: ReactNode; active?: string }) {
   const [moreOpen, setMoreOpen] = useState(false);
-  const { logout, company } = useRentalData();
+  const mobileNavRef = useRef<HTMLElement>(null);
+  const moreButtonRef = useRef<HTMLButtonElement>(null);
   const moreActive = mobileMore.some((item) => item.label === active);
+
+  useEffect(() => {
+    if (!moreOpen) return;
+    function closeWhenOutside(event: PointerEvent) {
+      if (event.target instanceof Node && !mobileNavRef.current?.contains(event.target)) setMoreOpen(false);
+    }
+    document.addEventListener("pointerdown", closeWhenOutside);
+    return () => document.removeEventListener("pointerdown", closeWhenOutside);
+  }, [moreOpen]);
   return <div className="app-shell">
     <aside className="sidebar">
       <Link className="brand" href="/" aria-label="Spiritus Rental home">
@@ -57,21 +67,47 @@ export function AppShell({ children, active = "Overview" }: { children: ReactNod
       </nav>
       <div className="sidebar-bottom">
         <div className="help-card"><span className="help-icon">?</span><strong>Need a hand?</strong><span>Get help setting up your workspace.</span><a href="mailto:support@spiritusglobal.tech">Contact support <span aria-hidden="true">↗</span></a></div>
-        <button className="profile-button" type="button" aria-label="Sign out of workspace" title="Sign out" onClick={() => void logout()}><span className="profile-avatar">{(company.name || "S").trim().slice(0, 1).toUpperCase()}</span><span className="profile-copy"><strong>Workspace account</strong><small>Sign out</small></span><svg className="logout-mark" viewBox="0 0 24 24" aria-hidden="true"><path d="M10 4H5v16h5m4-4 4-4-4-4m4 4H9"/></svg></button>
       </div>
     </aside>
-    <nav className="mobile-nav" aria-label="Mobile navigation">
+    <nav ref={mobileNavRef} className="mobile-nav" aria-label="Mobile navigation" onKeyDown={(event) => { if (event.key === "Escape") { setMoreOpen(false); moreButtonRef.current?.focus(); } }}>
       {mobilePrimary.map((item) => <NavLink key={item.label} item={item} active={active} />)}
-      <button className={`nav-item mobile-more-button${moreActive ? " is-active" : ""}`} type="button" aria-expanded={moreOpen} aria-haspopup="menu" onClick={() => setMoreOpen((value) => !value)}>
+      <button ref={moreButtonRef} className={`nav-item mobile-more-button${moreActive ? " is-active" : ""}`} type="button" aria-label="More pages" aria-current={moreActive ? "page" : undefined} aria-expanded={moreOpen} aria-controls="mobile-more-menu" aria-haspopup="true" onClick={() => setMoreOpen((value) => !value)}>
         <span className="nav-icon"><svg className="nav-svg" viewBox="0 0 24 24" aria-hidden="true" fill="currentColor"><circle cx="5" cy="12" r="1.7"/><circle cx="12" cy="12" r="1.7"/><circle cx="19" cy="12" r="1.7"/></svg></span><span>More</span>
       </button>
-      {moreOpen && <div className="mobile-more-menu" role="menu">{mobileMore.map((item) => <Link key={item.label} role="menuitem" className={`mobile-more-item${item.label === active ? " is-active" : ""}`} href={item.href} onClick={() => setMoreOpen(false)}><NavIcon name={item.icon}/><span>{item.label}</span><span className="mobile-menu-arrow">›</span></Link>)}</div>}
+      <div className="mobile-more-menu" id="mobile-more-menu" hidden={!moreOpen}>{mobileMore.map((item) => <Link key={item.label} className={`mobile-more-item${item.label === active ? " is-active" : ""}`} href={item.href} onClick={() => setMoreOpen(false)}><NavIcon name={item.icon}/><span>{item.label}</span><span className="mobile-menu-arrow" aria-hidden="true">›</span></Link>)}</div>
     </nav>
     <main className="main-content">{children}</main>
   </div>;
 }
 
 export function PageTopbar({ title }: { title: string }) {
-  const { logout } = useRentalData();
-  return <header className="topbar"><div className="breadcrumbs"><span>Workspace</span><span className="crumb-slash">/</span><strong>{title}</strong></div><div className="topbar-actions"><button className="logout-button" type="button" aria-label="Sign out" title="Sign out of workspace" onClick={() => void logout()}><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M10 4H5v16h5m4-4 4-4-4-4m4 4H9"/></svg><span>Sign out</span></button></div></header>;
+  const { logout, company, saveStatus, retrySave } = useRentalData();
+  const [loggingOut, setLoggingOut] = useState(false);
+  const [logoutError, setLogoutError] = useState("");
+  const companyName = company.name.trim() || "Rental workspace";
+
+  async function signOut() {
+    setLogoutError("");
+    setLoggingOut(true);
+    try { await logout(); }
+    catch (error) { setLogoutError(error instanceof Error ? error.message : "Sign out failed. Try again."); }
+    finally { setLoggingOut(false); }
+  }
+
+  return <header className="topbar">
+    <div className="breadcrumbs"><span>Workspace</span><span className="crumb-slash">/</span><strong>{title}</strong></div>
+    <div className="topbar-actions">
+      {saveStatus !== "idle" && <div className={`save-indicator save-indicator-${saveStatus}`} role={saveStatus === "error" ? "alert" : "status"} aria-live={saveStatus === "error" ? "assertive" : "polite"}>
+        {saveStatus === "saving" ? "Saving changes…" : saveStatus === "saved" ? "Saved" : <><span>Couldn’t save changes.</span><button type="button" onClick={retrySave}>Retry</button></>}
+      </div>}
+      <div className="account-control">
+        <span className="profile-avatar account-avatar" aria-hidden="true">{companyName.slice(0, 1).toUpperCase()}</span>
+        <span className="account-copy"><strong>{companyName}</strong><small>Workspace access</small></span>
+        <button className="logout-button" type="button" aria-label={`Sign out of ${companyName}`} title="Sign out of workspace" disabled={loggingOut} onClick={() => void signOut()}>
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M10 4H5v16h5m4-4 4-4-4-4m4 4H9"/></svg><span>{loggingOut ? "Signing out…" : "Sign out"}</span>
+        </button>
+      </div>
+      {logoutError && <p className="logout-error" role="alert">{logoutError}</p>}
+    </div>
+  </header>;
 }

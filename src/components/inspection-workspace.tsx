@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { useMemo, useState, type ChangeEvent, type FormEvent } from "react";
 import { AppShell, PageTopbar } from "@/components/app-shell";
+import { WorkspaceDialog } from "@/components/workspace-dialog";
 import { useRentalData, type InspectionPhoto, type PrebookingInspection } from "@/lib/rental-data";
 
 const PHOTO_LIMIT = 6;
@@ -107,13 +108,14 @@ export function InspectionWorkspace() {
     event.preventDefault(); setError("");
     if (!photos.length) { setError("Add at least one photo to complete the inspection."); return; }
     const form = new FormData(event.currentTarget);
-    addInspection({
+    const created = addInspection({
       customerId: String(form.get("customerId")), vehicleId: String(form.get("vehicleId")),
       ...(bookingId ? { bookingId } : {}), inspectionDate: String(form.get("inspectionDate")),
       odometerKm: Number(form.get("odometerKm")), fuelPercent: Number(form.get("fuelPercent")),
       condition: String(form.get("condition")) as PrebookingInspection["condition"],
       notes: String(form.get("notes")).trim(), photos,
     });
+    setSelectedId(created.id);
     setSaved(true); window.setTimeout(() => setSaved(false), 3500); resetForm();
   }
 
@@ -122,7 +124,7 @@ export function InspectionWorkspace() {
     <PageTopbar title="Inspections" />
     <main className="module-wrap inspection-wrap">
       <section className="module-page-heading"><div><p className="eyebrow">VEHICLE CONDITION</p><h1>Pre-booking inspections</h1><p className="module-summary">Record condition and photos against the customer and vehicle before confirming a rental.</p></div><button className="button button-primary page-action" type="button" onClick={() => setOpen(true)}><span aria-hidden="true">＋</span>New inspection</button></section>
-      {saved && <div className="inline-notice" role="status">Inspection saved and linked to the selected customer and vehicle.</div>}
+      {saved && <div className="inline-notice" role="status">Inspection added and linked to the selected customer and vehicle.</div>}
       {!customers.length || !vehicles.length ? <section className="data-empty"><span className="data-empty-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M8 4.5h8a2 2 0 0 1 2 2V20H6V6.5a2 2 0 0 1 2-2Z"/><path d="M9 10h6m-6 3.5h6"/></svg></span><h2>Add a customer and vehicle first</h2><p>Each inspection needs a customer and a vehicle, so photos stay attached to both records.</p><div className="empty-actions"><Link className="button button-quiet" href="/customers">Add customer</Link><Link className="button button-primary" href="/fleet">Add vehicle</Link></div></section> : !sorted.length ? <section className="data-empty"><span className="data-empty-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M8 4.5h8a2 2 0 0 1 2 2V20H6V6.5a2 2 0 0 1 2-2Z"/><path d="M9 10h6m-6 3.5h6"/></svg></span><h2>No inspections yet</h2><p>Create a pre-booking condition record, attach vehicle photos, and keep it connected to the renter and vehicle.</p><button className="button button-primary" type="button" onClick={() => setOpen(true)}>＋ Create first inspection</button></section> : <div className="inspection-layout">
         <section className="inspection-list panel"><div className="panel-heading"><div><p className="eyebrow">INSPECTION RECORDS</p><h2>{sorted.length} {sorted.length === 1 ? "inspection" : "inspections"}</h2></div></div>
           <div className="inspection-cards">{sorted.map((item) => {
@@ -146,7 +148,7 @@ export function InspectionWorkspace() {
         </section>}
       </div>}
     </main>
-    {open && <div className="modal-backdrop" tabIndex={-1} onKeyDown={(event) => { if (event.key === "Escape") resetForm(); }} onMouseDown={(event) => { if (event.target === event.currentTarget) resetForm(); }}><section className="form-modal inspection-modal" role="dialog" aria-modal="true" aria-labelledby="inspection-title"><div className="modal-heading"><div><p className="eyebrow">PRE-BOOKING CHECK</p><h2 id="inspection-title">New vehicle inspection</h2></div><button type="button" className="modal-close" onClick={resetForm} aria-label="Close dialog">×</button></div>
+    {open && <WorkspaceDialog title="New vehicle inspection" eyebrow="PRE-BOOKING CHECK" className="inspection-modal" onClose={resetForm}>
       <form className="form-grid" onSubmit={save}>
         <label className="form-field form-field-wide"><span>Customer</span><select name="customerId" required value={customerId} onChange={(event) => { setCustomerId(event.target.value); setBookingId(""); }}><option value="" disabled>Select renter</option>{customers.map((customer) => <option key={customer.id} value={customer.id}>{customer.name} · {customer.phone}</option>)}</select></label>
         <label className="form-field form-field-wide"><span>Vehicle</span><select name="vehicleId" required value={vehicleId} onChange={(event) => { setVehicleId(event.target.value); setBookingId(""); }}><option value="" disabled>Select vehicle</option>{vehicles.map((vehicle) => <option key={vehicle.id} value={vehicle.id}>{vehicle.registration} · {vehicle.make} {vehicle.model}</option>)}</select></label>
@@ -164,6 +166,6 @@ export function InspectionWorkspace() {
         <p className="form-hint form-field-wide">This inspection stays attached to the selected customer and vehicle. Photos are saved with the workspace record.</p>
         <div className="form-field-wide"><div className="form-actions"><button className="button button-quiet" type="button" onClick={resetForm}>Cancel</button><button className="button button-primary" type="submit" disabled={busy}>{busy ? "Preparing photos…" : "Save inspection"}</button></div></div>
       </form>
-    </section></div>}
+    </WorkspaceDialog>}
   </AppShell>;
 }

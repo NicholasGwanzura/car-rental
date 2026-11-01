@@ -1,14 +1,14 @@
 "use client";
 
 import Link from "next/link";
-import { AppShell, PageTopbar } from "@/components/app-shell";
+import { AppShell, NavIcon, PageTopbar } from "@/components/app-shell";
 import { formatMoney, useRentalData } from "@/lib/rental-data";
 
 const today = new Intl.DateTimeFormat("en", { weekday: "long", month: "long", day: "numeric", timeZone: "Africa/Harare" }).format(new Date());
 const quickLinks = [
-  { title: "Add a vehicle", detail: "Grow your fleet", icon: "▰", href: "/fleet" },
-  { title: "Create a booking", detail: "Reserve a vehicle", icon: "＋", href: "/bookings" },
-  { title: "Add a customer", detail: "Keep renter details", icon: "♙", href: "/customers" },
+  { title: "Add a vehicle", detail: "Grow your fleet", icon: "fleet", href: "/fleet" },
+  { title: "Create a booking", detail: "Reserve a vehicle", icon: "bookings", href: "/bookings" },
+  { title: "Add a customer", detail: "Keep renter details", icon: "customers", href: "/customers" },
 ];
 
 export function OverviewWorkspace() {
@@ -39,10 +39,10 @@ export function OverviewWorkspace() {
         </section>}
 
         <section className="stats-grid overview-stats" aria-label="Workspace totals">
-          <article className="stat-card"><div className="stat-top"><span className="stat-label">FLEET</span><span className="stat-icon fleet-icon">▰</span></div><div className="stat-number">{vehicles.length} <span>{vehicles.length === 1 ? "vehicle" : "vehicles"}</span></div><Link className="stat-link" href="/fleet">Manage fleet →</Link></article>
-          <article className="stat-card"><div className="stat-top"><span className="stat-label">UPCOMING & ACTIVE</span><span className="stat-icon booking-icon">▤</span></div><div className="stat-number">{openBookings.length} <span>{openBookings.length === 1 ? "booking" : "bookings"}</span></div><Link className="stat-link" href="/bookings">View bookings →</Link></article>
-          <article className="stat-card"><div className="stat-top"><span className="stat-label">CUSTOMERS</span><span className="stat-icon customer-icon">♙</span></div><div className="stat-number">{customers.length} <span>{customers.length === 1 ? "customer" : "customers"}</span></div><Link className="stat-link" href="/customers">View customers →</Link></article>
-          <article className="stat-card"><div className="stat-top"><span className="stat-label">SERVICE TO DO</span><span className="stat-icon progress-icon">⚙</span></div><div className="stat-number">{openJobs.length} <span>{openJobs.length === 1 ? "job" : "jobs"}</span></div><Link className="stat-link" href="/maintenance">Open maintenance →</Link></article>
+          <article className="stat-card"><div className="stat-top"><span className="stat-label">FLEET</span><span className="stat-icon fleet-icon"><NavIcon name="fleet" /></span></div><div className="stat-number">{vehicles.length} <span>{vehicles.length === 1 ? "vehicle" : "vehicles"}</span></div><Link className="stat-link" href="/fleet">Manage fleet →</Link></article>
+          <article className="stat-card"><div className="stat-top"><span className="stat-label">UPCOMING & ACTIVE</span><span className="stat-icon booking-icon"><NavIcon name="bookings" /></span></div><div className="stat-number">{openBookings.length} <span>{openBookings.length === 1 ? "booking" : "bookings"}</span></div><Link className="stat-link" href="/bookings">View bookings →</Link></article>
+          <article className="stat-card"><div className="stat-top"><span className="stat-label">CUSTOMERS</span><span className="stat-icon customer-icon"><NavIcon name="customers" /></span></div><div className="stat-number">{customers.length} <span>{customers.length === 1 ? "customer" : "customers"}</span></div><Link className="stat-link" href="/customers">View customers →</Link></article>
+          <article className="stat-card"><div className="stat-top"><span className="stat-label">SERVICE TO DO</span><span className="stat-icon progress-icon"><NavIcon name="maintenance" /></span></div><div className="stat-number">{openJobs.length} <span>{openJobs.length === 1 ? "job" : "jobs"}</span></div><Link className="stat-link" href="/maintenance">Open maintenance →</Link></article>
         </section>
 
         <section className="content-grid overview-content-grid">
@@ -52,7 +52,7 @@ export function OverviewWorkspace() {
               return <Link href="/bookings" className="upcoming-row" key={booking.id}><span className="upcoming-date"><strong>{new Intl.DateTimeFormat("en", { day: "2-digit", timeZone: "Africa/Harare" }).format(new Date(`${booking.startDate}T12:00:00`))}</strong><small>{new Intl.DateTimeFormat("en", { month: "short", timeZone: "Africa/Harare" }).format(new Date(`${booking.startDate}T12:00:00`))}</small></span><span className="upcoming-details"><strong>{customer?.name ?? "Customer"}</strong><small>{vehicle ? `${vehicle.make} ${vehicle.model} · ${vehicle.registration}` : "Vehicle"}</small></span><span className="upcoming-end"><span className={`status-pill status-${booking.status.toLowerCase()}`}>{booking.status}</span><small>{formatMoney(booking.total)}</small></span></Link>;
             })}</div>}
           </article>
-          <article className="panel quick-panel"><div className="panel-heading"><div><p className="eyebrow">SHORTCUTS</p><h2>Quick actions</h2></div></div><div className="quick-list">{quickLinks.map((item) => <Link className="quick-action" key={item.title} href={item.href}><span className="quick-icon" aria-hidden="true">{item.icon}</span><span className="quick-copy"><strong>{item.title}</strong><small>{item.detail}</small></span><span className="quick-arrow" aria-hidden="true">↗</span></Link>)}</div><Link className="reports-shortcut" href="/reports"><span><strong>View reports</strong><small>Track rental performance</small></span><span aria-hidden="true">→</span></Link></article>
+          <article className="panel quick-panel"><div className="panel-heading"><div><p className="eyebrow">SHORTCUTS</p><h2>Quick actions</h2></div></div><div className="quick-list">{quickLinks.map((item) => <Link className="quick-action" key={item.title} href={item.href}><span className="quick-icon" aria-hidden="true"><NavIcon name={item.icon} /></span><span className="quick-copy"><strong>{item.title}</strong><small>{item.detail}</small></span><span className="quick-arrow" aria-hidden="true">↗</span></Link>)}</div><Link className="reports-shortcut" href="/reports"><span><strong>View reports</strong><small>Track rental performance</small></span><span aria-hidden="true">→</span></Link></article>
         </section>
         <footer className="page-footer"><span>SPIRITUS RENTAL</span><span>Built for the way you move.</span><a href="mailto:support@spiritusglobal.tech">Help & support ↗</a></footer>
       </>}

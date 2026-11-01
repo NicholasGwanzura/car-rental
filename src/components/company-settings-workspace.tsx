@@ -22,7 +22,7 @@ export function CompanySettingsWorkspace() {
     <PageTopbar title="Company settings" />
     <main className="module-wrap settings-wrap">
       <section className="module-page-heading"><div><p className="eyebrow">WORKSPACE</p><h1>Company settings</h1><p className="module-summary">Add your business details once. They’ll appear on invoices and PDF exports.</p></div></section>
-      {saved && <div className="inline-notice" role="status">Company details saved.</div>}
+      {saved && <div className="inline-notice" role="status">Company details updated.</div>}
       <form className="settings-card" onSubmit={save}>
         <div className="settings-section-heading"><span className="settings-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 20V6.5L12 3l8 3.5V20M8 20v-5h8v5M8 9h.01M12 9h.01M16 9h.01"/></svg></span><div><h2>Business identity</h2><p>Shown as the sender on customer invoices.</p></div></div>
         <div className="settings-form-grid">

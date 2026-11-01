@@ -38,8 +38,10 @@ export type Booking = {
   note: string;
   checkoutOdometer?: number;
   checkoutFuel?: number;
+  checkoutNote?: string;
   returnOdometer?: number;
   returnFuel?: number;
+  returnNote?: string;
   createdAt: string;
 };
 
@@ -70,8 +72,11 @@ export type PrebookingInspection = {
 
 export type CompanyProfile = { name: string; email: string; phone: string; address: string; invoicePrefix: string; paymentInstructions: string };
 type StoreData = { vehicles: Vehicle[]; customers: Customer[]; bookings: Booking[]; maintenance: MaintenanceJob[]; inspections: PrebookingInspection[]; company: CompanyProfile };
+type SaveStatus = "idle" | "saving" | "saved" | "error";
 type RentalContextValue = StoreData & {
   ready: boolean;
+  saveStatus: SaveStatus;
+  retrySave: () => void;
   addVehicle: (vehicle: Omit<Vehicle, "id" | "createdAt">) => void;
   addCustomer: (customer: Omit<Customer, "id" | "createdAt">) => void;
   addBooking: (booking: Omit<Booking, "id" | "reference" | "createdAt" | "status">) => Booking;
@@ -123,7 +128,57 @@ export function RentalDataProvider({ children }: { children: ReactNode }) {
   const [ready, setReady] = useState(false);
   const [databaseConnected, setDatabaseConnected] = useState(false);
   const [authRequired, setAuthRequired] = useState(false);
+  const [saveStatus, setSaveStatus] = useState<SaveStatus>("idle");
+  const dataRef = useRef<StoreData>(emptyData);
+  const pendingSaveRef = useRef<{ data: StoreData; version: number } | null>(null);
+  const saveVersionRef = useRef(0);
+  const statusVersionRef = useRef(0);
   const writeQueue = useRef<Promise<void>>(Promise.resolve());
+
+  function showSaveStatus(status: SaveStatus) {
+    const version = ++statusVersionRef.current;
+    setSaveStatus(status);
+    if (status === "saved") {
+      window.setTimeout(() => {
+        if (statusVersionRef.current === version) setSaveStatus("idle");
+      }, 2400);
+    }
+  }
+
+  function persistData(next: StoreData) {
+    const version = ++saveVersionRef.current;
+    pendingSaveRef.current = { data: next, version };
+    showSaveStatus("saving");
+
+    if (!databaseConnected) {
+      try {
+        localStorage.setItem(STORAGE_KEY, JSON.stringify(next));
+        pendingSaveRef.current = null;
+        showSaveStatus("saved");
+      } catch (error) {
+        console.error("Workspace browser storage failed", error);
+        showSaveStatus("error");
+      }
+      return;
+    }
+
+    const operation = writeQueue.current.then(async () => {
+      const response = await fetch("/api/workspace", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(next),
+      });
+      if (!response.ok) throw new Error(`Workspace save failed (${response.status})`);
+    });
+    writeQueue.current = operation.then(() => {
+      if (pendingSaveRef.current?.version !== version) return;
+      pendingSaveRef.current = null;
+      showSaveStatus("saved");
+    }, (error: unknown) => {
+      console.error("Workspace data could not be saved", error);
+      if (pendingSaveRef.current?.version === version) showSaveStatus("error");
+    });
+  }
 
   useEffect(() => {
     let mounted = true;
@@ -132,7 +187,11 @@ export function RentalDataProvider({ children }: { children: ReactNode }) {
         const response = await fetch("/api/workspace", { cache: "no-store" });
         if (response.ok) {
           const result = await response.json();
-          if (mounted) { setData({ ...emptyData, ...result.data }); setDatabaseConnected(true); setReady(true); }
+          if (mounted) {
+            const loaded = { ...emptyData, ...result.data };
+            dataRef.current = loaded;
+            setData(loaded); setDatabaseConnected(true); setReady(true);
+          }
           return;
         }
         if (response.status === 401) {
@@ -143,7 +202,11 @@ export function RentalDataProvider({ children }: { children: ReactNode }) {
       if (!mounted) return;
       try {
         const stored = localStorage.getItem(STORAGE_KEY);
-        if (stored) setData({ ...emptyData, ...(JSON.parse(stored) as Partial<StoreData>) });
+        if (stored) {
+          const loaded = { ...emptyData, ...(JSON.parse(stored) as Partial<StoreData>) };
+          dataRef.current = loaded;
+          setData(loaded);
+        }
       } catch { localStorage.removeItem(STORAGE_KEY); }
       setReady(true);
     }
@@ -152,6 +215,11 @@ export function RentalDataProvider({ children }: { children: ReactNode }) {
   }, []);
 
   function replaceData(next: StoreData) {
+    dataRef.current = next;
+    pendingSaveRef.current = null;
+    saveVersionRef.current += 1;
+    statusVersionRef.current += 1;
+    setSaveStatus("idle");
     setData(next);
     setAuthRequired(false);
     setDatabaseConnected(true);
@@ -159,24 +227,25 @@ export function RentalDataProvider({ children }: { children: ReactNode }) {
   }
 
   function updateData(updater: (current: StoreData) => StoreData) {
-    setData((current) => {
-      const next = updater(current);
-      if (databaseConnected) {
-        writeQueue.current = writeQueue.current.then(async () => {
-          const response = await fetch("/api/workspace", { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify(next) });
-          if (!response.ok) throw new Error("Workspace save failed");
-        }).catch((error) => console.error("Workspace data could not be saved", error));
-      } else {
-        try { localStorage.setItem(STORAGE_KEY, JSON.stringify(next)); } catch (error) { console.error("Workspace browser storage failed", error); }
-      }
-      return next;
-    });
+    const next = updater(dataRef.current);
+    dataRef.current = next;
+    setData(next);
+    persistData(next);
+  }
+
+  function retrySave() {
+    const pending = pendingSaveRef.current;
+    if (pending) persistData(pending.data);
   }
 
   useEffect(() => {
     function onStorage(event: StorageEvent) {
       if (event.key !== STORAGE_KEY || !event.newValue) return;
-      try { setData({ ...emptyData, ...JSON.parse(event.newValue) }); } catch { /* ignore an invalid cross-tab update */ }
+      try {
+        const next = { ...emptyData, ...JSON.parse(event.newValue) };
+        dataRef.current = next;
+        setData(next);
+      } catch { /* ignore an invalid cross-tab update */ }
     }
     window.addEventListener("storage", onStorage);
     return () => window.removeEventListener("storage", onStorage);
@@ -185,6 +254,8 @@ export function RentalDataProvider({ children }: { children: ReactNode }) {
   const value = useMemo<RentalContextValue>(() => ({
     ...data,
     ready,
+    saveStatus,
+    retrySave,
     addVehicle: (vehicle) => updateData((current) => ({ ...current, vehicles: [{ ...vehicle, id: makeId(), createdAt: new Date().toISOString() }, ...current.vehicles] })),
     addCustomer: (customer) => updateData((current) => ({ ...current, customers: [{ ...customer, id: makeId(), createdAt: new Date().toISOString() }, ...current.customers] })),
     addBooking: (booking) => {
@@ -201,8 +272,14 @@ export function RentalDataProvider({ children }: { children: ReactNode }) {
       return created;
     },
     updateCompany: (company) => updateData((current) => ({ ...current, company })),
-    logout: async () => { await fetch("/api/auth/logout", { method: "POST" }); setAuthRequired(true); },
-  }), [data, ready, databaseConnected]);
+    logout: async () => {
+      await writeQueue.current;
+      if (pendingSaveRef.current) throw new Error("Some changes haven’t been saved. Retry the save before signing out.");
+      const response = await fetch("/api/auth/logout", { method: "POST" });
+      if (!response.ok) throw new Error("Sign out could not be completed. Try again.");
+      setAuthRequired(true);
+    },
+  }), [data, ready, databaseConnected, saveStatus]);
 
   return <RentalContext.Provider value={value}>{!ready ? <div className="loading-state"><span className="loading-spinner" />Loading workspace…</div> : authRequired ? <WorkspaceLogin onSuccess={replaceData} /> : children}</RentalContext.Provider>;
 }
