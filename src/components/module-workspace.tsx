@@ -1,13 +1,15 @@
 "use client";
 
 import Link from "next/link";
-import { useState, type FormEvent, type ReactNode } from "react";
+import { useEffect, useState, type FormEvent, type ReactNode } from "react";
 import { AppShell, PageTopbar } from "@/components/app-shell";
 import { BillingWorkspace } from "@/components/billing-workspace";
 import { CompanySettingsWorkspace } from "@/components/company-settings-workspace";
 import { InspectionWorkspace } from "@/components/inspection-workspace";
+import { ClientSignature, InspectionChecklistFields, inspectionChecklistItems } from "@/components/inspection-inputs";
 import { WorkspaceDialog } from "@/components/workspace-dialog";
-import { formatMoney, nightsBetween, useRentalData, type Booking, type Customer, type MaintenanceJob, type Vehicle } from "@/lib/rental-data";
+import { compressIdentityImage } from "@/lib/identity-image";
+import { formatMoney, nightsBetween, useRentalData, type Booking, type Customer, type InspectionChecklist, type MaintenanceJob, type Vehicle } from "@/lib/rental-data";
 
 const pageCopy: Record<string, { title: string; summary: string; action?: string }> = {
   bookings: { title: "Bookings", summary: "Plan pickups, manage active rentals, and keep every reservation moving.", action: "New booking" },
@@ -18,6 +20,7 @@ const pageCopy: Record<string, { title: string; summary: string; action?: string
   billing: { title: "Billing", summary: "Review rental charges, record payment status, and prepare customer invoices." },
   settings: { title: "Company settings", summary: "Manage business details that appear on customer invoices." },
   inspections: { title: "Inspections", summary: "Record vehicle condition before a rental and keep photos with the customer and vehicle." },
+  team: { title: "Team access", summary: "Invite managers and sales staff, and see who can access Classic Rides." },
 };
 
 function dateInputValue(date: Date) {
@@ -63,29 +66,39 @@ function FleetWorkspace() {
   const [open, setOpen] = useState(false);
   const [query, setQuery] = useState("");
   const [saved, setSaved] = useState(false);
+  const [copiedId, setCopiedId] = useState("");
   const filtered = vehicles.filter((vehicle) => `${vehicle.registration} ${vehicle.make} ${vehicle.model}`.toLowerCase().includes(query.toLowerCase()));
   function save(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     const form = new FormData(event.currentTarget);
-    addVehicle({ registration: String(form.get("registration")).trim().toUpperCase(), make: String(form.get("make")).trim(), model: String(form.get("model")).trim(), year: Number(form.get("year")), dailyRate: Number(form.get("dailyRate")), transmission: String(form.get("transmission")), status: "Available" });
+    addVehicle({ registration: String(form.get("registration")).trim().toUpperCase(), make: String(form.get("make")).trim(), model: String(form.get("model")).trim(), year: Number(form.get("year")), dailyRate: Number(form.get("dailyRate")), vehicleType: String(form.get("vehicleType")) as Vehicle["vehicleType"], depositAmount: Number(form.get("depositAmount")), mileageAllowanceKmPerDay: Number(form.get("mileageAllowanceKmPerDay")), excessMileageRatePerKm: Number(form.get("excessMileageRatePerKm")), transmission: String(form.get("transmission")), status: "Available" });
     setOpen(false); setSaved(true); window.setTimeout(() => setSaved(false), 3000);
+  }
+  async function copyShareLink(vehicleId: string) {
+    const url = `https://classicrides.online/rent/${encodeURIComponent(vehicleId)}`;
+    try { await navigator.clipboard.writeText(url); setCopiedId(vehicleId); window.setTimeout(() => setCopiedId(""), 2500); }
+    catch { window.prompt("Copy this public vehicle link", url); }
   }
   if (!ready) return <LoadingState />;
   return <>
     {saved && <div className="inline-notice" role="status">Vehicle added to your fleet.</div>}
     <div className="list-toolbar"><label className="search-box"><span aria-hidden="true">⌕</span><input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Search registration or model" aria-label="Search fleet" /></label><span className="result-count">{vehicles.length} {vehicles.length === 1 ? "vehicle" : "vehicles"}</span></div>
-    {vehicles.length === 0 ? <EmptyState icon="▰" title="Your fleet starts here" detail="Add a vehicle to set its day rate and begin managing availability." action={<button className="button button-primary" onClick={() => setOpen(true)}>＋ Add your first vehicle</button>} /> : filtered.length === 0 ? <EmptyState icon="⌕" title="No matches" detail="Try a different registration, make, or model." /> : <TableFrame><thead><tr><th>VEHICLE</th><th>REGISTRATION</th><th>DAY RATE</th><th>STATUS</th><th>BOOKINGS</th></tr></thead><tbody>{filtered.map((vehicle) => {
+    {vehicles.length === 0 ? <EmptyState icon="▰" title="Your fleet starts here" detail="Add a vehicle to set its type, day rate, and required deposit." action={<button className="button button-primary" onClick={() => setOpen(true)}>＋ Add your first vehicle</button>} /> : filtered.length === 0 ? <EmptyState icon="⌕" title="No matches" detail="Try a different registration, make, or model." /> : <TableFrame><thead><tr><th>VEHICLE</th><th>TYPE</th><th>REGISTRATION</th><th>DAY RATE</th><th>DEPOSIT</th><th>EXCESS RATE</th><th>STATUS</th><th>BOOKINGS</th><th>SHARE</th></tr></thead><tbody>{filtered.map((vehicle) => {
       const activeBookings = bookings.filter((booking) => booking.vehicleId === vehicle.id && ["Confirmed", "Active"].includes(booking.status)).length;
-      return <tr key={vehicle.id}><td data-label="Vehicle"><div className="table-primary">{vehicle.make} {vehicle.model}</div><div className="table-secondary">{vehicle.year} · {vehicle.transmission}</div></td><td data-label="Registration"><span className="registration-tag">{vehicle.registration}</span></td><td data-label="Day rate">{formatMoney(vehicle.dailyRate)} <span className="table-secondary">/ day</span></td><td data-label="Status"><span className={`status-pill status-${slug(vehicle.status)}`}>{vehicle.status}</span></td><td data-label="Bookings">{activeBookings}</td></tr>;
+      return <tr key={vehicle.id}><td data-label="Vehicle"><div className="table-primary">{vehicle.make} {vehicle.model}</div><div className="table-secondary">{vehicle.year} · {vehicle.transmission} · {vehicle.mileageAllowanceKmPerDay} km/day</div></td><td data-label="Type">{vehicle.vehicleType}</td><td data-label="Registration"><span className="registration-tag">{vehicle.registration}</span></td><td data-label="Day rate">{formatMoney(vehicle.dailyRate)} <span className="table-secondary">/ day</span></td><td data-label="Deposit">{vehicle.depositAmount > 0 ? formatMoney(vehicle.depositAmount) : <span className="table-secondary">Not set</span>}</td><td data-label="Excess rate">{formatMoney(vehicle.excessMileageRatePerKm)} / km</td><td data-label="Status"><span className={`status-pill status-${slug(vehicle.status)}`}>{vehicle.status}</span></td><td data-label="Bookings">{activeBookings}</td><td data-label="Share"><button className="text-action" type="button" onClick={() => void copyShareLink(vehicle.id)}>{copiedId === vehicle.id ? "Link copied" : "Copy pre-book link"}</button></td></tr>;
     })}</tbody></TableFrame>}
     {open && <Modal title="Add a vehicle" onClose={() => setOpen(false)}><form className="form-grid" onSubmit={save}>
       <Field label="Registration"><input name="registration" placeholder="e.g. AAZ 1234" required maxLength={16} /></Field>
       <Field label="Make"><input name="make" placeholder="Toyota" required /></Field>
       <Field label="Model"><input name="model" placeholder="Corolla Cross" required /></Field>
       <Field label="Year"><input name="year" type="number" min="1980" max="2035" defaultValue={new Date().getFullYear()} required /></Field>
+      <Field label="Vehicle type"><select name="vehicleType" defaultValue="Budget" required><option>Budget</option><option>Premium</option><option>SUV</option></select></Field>
       <Field label="Transmission"><select name="transmission" defaultValue="Automatic"><option>Automatic</option><option>Manual</option></select></Field>
       <Field label="Day rate (USD)"><input name="dailyRate" type="number" min="1" step="1" placeholder="65" required /></Field>
-      <p className="form-hint form-field-wide">You can update vehicle availability any time from its booking activity.</p>
+      <Field label="Refundable deposit (USD)"><input name="depositAmount" type="number" min="1" step="1" placeholder="e.g. 100" required /></Field>
+      <Field label="Included mileage (km per day)"><input name="mileageAllowanceKmPerDay" type="number" min="0" step="1" placeholder="e.g. 200" required /></Field>
+      <Field label="Excess mileage (USD per km)"><input name="excessMileageRatePerKm" type="number" min="0.01" step="0.01" placeholder="e.g. 0.25" required /></Field>
+      <p className="form-hint form-field-wide">Type, deposit, mileage allowance, and excess rate will be copied to each new booking.</p>
       <div className="form-field-wide"><DialogActions onCancel={() => setOpen(false)} submit="Add vehicle" /></div>
     </form></Modal>}
   </>;
@@ -95,39 +108,84 @@ function CustomerWorkspace() {
   const { customers, addCustomer, bookings, ready } = useRentalData();
   const [open, setOpen] = useState(false);
   const [query, setQuery] = useState("");
+  const [customerError, setCustomerError] = useState("");
+  const [savingCustomer, setSavingCustomer] = useState(false);
   const filtered = customers.filter((customer) => `${customer.name} ${customer.phone} ${customer.email}`.toLowerCase().includes(query.toLowerCase()));
-  function save(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault(); const form = new FormData(event.currentTarget);
-    addCustomer({ name: String(form.get("name")).trim(), phone: String(form.get("phone")).trim(), email: String(form.get("email")).trim(), licence: String(form.get("licence")).trim() }); setOpen(false);
+  async function save(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault(); setCustomerError(""); setSavingCustomer(true); const form = new FormData(event.currentTarget);
+    try {
+      const idPhoto = form.get("idPhoto");
+      if (!(idPhoto instanceof File) || !idPhoto.size) throw new Error("Capture or choose an ID image to continue.");
+      addCustomer({ name: String(form.get("name")).trim(), phone: String(form.get("phone")).trim(), email: String(form.get("email")).trim(), licence: String(form.get("licence")).trim(), nextOfKinName: String(form.get("nextOfKinName")).trim(), nextOfKinPhone: String(form.get("nextOfKinPhone")).trim(), idNumber: String(form.get("idNumber")).trim(), idPhotoDataUrl: await compressIdentityImage(idPhoto), idPhotoName: idPhoto.name }); setOpen(false);
+    } catch (reason) { setCustomerError(reason instanceof Error ? reason.message : "Could not save this customer."); }
+    finally { setSavingCustomer(false); }
   }
   if (!ready) return <LoadingState />;
   return <>
     <div className="list-toolbar"><label className="search-box"><span aria-hidden="true">⌕</span><input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Search customers" aria-label="Search customers" /></label><span className="result-count">{customers.length} {customers.length === 1 ? "customer" : "customers"}</span></div>
-    {customers.length === 0 ? <EmptyState icon="♙" title="No customers yet" detail="Save renter contact details once, then select them when you create a booking." action={<button className="button button-primary" onClick={() => setOpen(true)}>＋ Add a customer</button>} /> : filtered.length === 0 ? <EmptyState icon="⌕" title="No matches" detail="Try a different name, phone, or email." /> : <TableFrame><thead><tr><th>CUSTOMER</th><th>PHONE</th><th>DRIVER LICENCE</th><th>BOOKINGS</th><th>ADDED</th></tr></thead><tbody>{filtered.map((customer) => <tr key={customer.id}><td data-label="Customer"><div className="table-primary">{customer.name}</div><div className="table-secondary">{customer.email || "No email added"}</div></td><td data-label="Phone">{customer.phone}</td><td data-label="Driver licence">{customer.licence || <span className="table-secondary">Not recorded</span>}</td><td data-label="Bookings">{bookings.filter((booking) => booking.customerId === customer.id).length}</td><td data-label="Added">{dateLabel(customer.createdAt.slice(0, 10))}</td></tr>)}</tbody></TableFrame>}
+    {customers.length === 0 ? <EmptyState icon="♙" title="No customers yet" detail="Save renter contact details once, then select them when you create a booking." action={<button className="button button-primary" onClick={() => setOpen(true)}>＋ Add a customer</button>} /> : filtered.length === 0 ? <EmptyState icon="⌕" title="No matches" detail="Try a different name, phone, or email." /> : <TableFrame><thead><tr><th>CUSTOMER</th><th>PHONE</th><th>DRIVER LICENCE</th><th>NEXT OF KIN</th><th>ID CAPTURE</th><th>BOOKINGS</th><th>ADDED</th></tr></thead><tbody>{filtered.map((customer) => <tr key={customer.id}><td data-label="Customer"><div className="table-primary">{customer.name}</div><div className="table-secondary">{customer.email || "No email added"}</div></td><td data-label="Phone">{customer.phone}</td><td data-label="Driver licence">{customer.licence || <span className="table-secondary">Not recorded</span>}<div className="table-secondary">ID {customer.idNumber || "not recorded"}</div></td><td data-label="Next of kin">{customer.nextOfKinName || "Not recorded"}<div className="table-secondary">{customer.nextOfKinPhone || ""}</div></td><td data-label="ID capture">{customer.idPhotoDataUrl ? "Captured" : "Missing"}</td><td data-label="Bookings">{bookings.filter((booking) => booking.customerId === customer.id).length}</td><td data-label="Added">{dateLabel(customer.createdAt.slice(0, 10))}</td></tr>)}</tbody></TableFrame>}
     {open && <Modal title="Add a customer" onClose={() => setOpen(false)}><form className="form-grid" onSubmit={save}>
       <Field label="Full name" wide><input name="name" placeholder="Customer name" autoComplete="name" required /></Field>
       <Field label="Phone"><input name="phone" type="tel" placeholder="+263 77 000 0000" autoComplete="tel" required /></Field>
-      <Field label="Email (optional)"><input name="email" type="email" placeholder="name@example.com" autoComplete="email" /></Field>
-      <Field label="Driver licence (optional)" wide><input name="licence" placeholder="Licence number" /></Field>
-      <div className="form-field-wide"><DialogActions onCancel={() => setOpen(false)} submit="Save customer" /></div>
+      <Field label="Email"><input name="email" type="email" placeholder="name@example.com" autoComplete="email" required /></Field>
+      <Field label="Driver licence number"><input name="licence" placeholder="Licence number" required /></Field>
+      <Field label="ID number"><input name="idNumber" placeholder="National ID or passport" required /></Field>
+      <Field label="Next of kin full name"><input name="nextOfKinName" placeholder="Full name" required /></Field>
+      <Field label="Next of kin phone"><input name="nextOfKinPhone" type="tel" placeholder="+263 77 000 0000" required /></Field>
+      <Field label="Customer ID photo" wide><input name="idPhoto" type="file" accept="image/*" capture="environment" required /><small>Capture or choose a clear photo of the customer’s ID. The image is compressed before secure workspace storage.</small></Field>
+      {customerError && <p className="form-error form-field-wide" role="alert">{customerError}</p>}
+      <div className="form-field-wide"><div className="form-actions"><button className="button button-quiet" type="button" onClick={() => setOpen(false)}>Cancel</button><button className="button button-primary" type="submit" disabled={savingCustomer}>{savingCustomer ? "Saving…" : "Save customer"}</button></div></div>
     </form></Modal>}
   </>;
 }
 
 function BookingLifecycleDialog({ booking, action, onClose }: { booking: Booking; action: "checkout" | "return"; onClose: () => void }) {
-  const { updateBooking } = useRentalData();
+  const { customers, vehicles, addInspection, updateBooking } = useRentalData();
   const isCheckout = action === "checkout";
+  const customer = customers.find((item) => item.id === booking.customerId);
+  const vehicle = vehicles.find((item) => item.id === booking.vehicleId);
+  const [checklist, setChecklist] = useState<InspectionChecklist>({});
+  const [signature, setSignature] = useState("");
+  const [signatoryName, setSignatoryName] = useState(customer?.name ?? "");
+  const [error, setError] = useState("");
+  const [odometerText, setOdometerText] = useState("");
+  const rentalDays = nightsBetween(booking.startDate, booking.endDate);
+  const distanceKm = !isCheckout && odometerText !== "" ? Math.max(0, Number(odometerText) - (booking.checkoutOdometer ?? 0)) : 0;
+  const includedKm = (booking.mileageAllowanceKmPerDay ?? vehicle?.mileageAllowanceKmPerDay ?? 0) * rentalDays;
+  const excessKm = Math.max(0, distanceKm - includedKm);
+  const mileageRate = booking.excessMileageRatePerKm ?? vehicle?.excessMileageRatePerKm ?? 0;
+  const excessCharge = excessKm * mileageRate;
   function save(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault(); const form = new FormData(event.currentTarget); const odometer = Number(form.get("odometer")); const fuel = Number(form.get("fuel")); const note = String(form.get("note")).trim();
-    updateBooking(booking.id, isCheckout ? { status: "Active", checkoutOdometer: odometer, checkoutFuel: fuel, checkoutNote: note } : { status: "Completed", returnOdometer: odometer, returnFuel: fuel, returnNote: note }); onClose();
+    event.preventDefault(); setError("");
+    if (inspectionChecklistItems.some((item) => !checklist[item.key])) { setError("Complete every checklist item before continuing."); return; }
+    if (!signature) { setError("Capture the client signature before continuing."); return; }
+    const form = new FormData(event.currentTarget);
+    const odometer = Number(form.get("odometer"));
+    const fuel = Number(form.get("fuel"));
+    const note = String(form.get("note")).trim();
+    if (!isCheckout && odometer < (booking.checkoutOdometer ?? 0)) { setError("Return odometer must be at least the pickup reading."); return; }
+    const depositAmount = booking.depositAmount ?? vehicle?.depositAmount ?? 0;
+    if (isCheckout && depositAmount > 0 && form.get("depositReceived") !== "on") { setError(`Confirm collection of the ${formatMoney(depositAmount)} vehicle deposit to start this rental.`); return; }
+    const condition = Object.values(checklist).includes("attention") ? "Needs attention" : "Good";
+    const now = new Date();
+    addInspection({ customerId: booking.customerId, vehicleId: booking.vehicleId, bookingId: booking.id, stage: isCheckout ? "Pickup" : "Return", inspectionDate: `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}-${String(now.getDate()).padStart(2, "0")}`, odometerKm: odometer, fuelPercent: fuel, condition, notes: note, checklist, signatoryName: signatoryName.trim(), signatureDataUrl: signature, signedAt: now.toISOString(), photos: [] });
+    updateBooking(booking.id, isCheckout
+      ? { status: "Active", checkoutOdometer: odometer, checkoutFuel: fuel, checkoutNote: note, depositStatus: depositAmount > 0 ? "Held" : "None" }
+      : { status: "Completed", returnOdometer: odometer, returnFuel: fuel, returnNote: note, distanceKm, includedMileageKm: includedKm, excessMileageKm: excessKm, excessMileageCharge: excessCharge });
+    onClose();
   }
-  return <Modal title={isCheckout ? "Vehicle handover" : "Complete return"} onClose={onClose}>
-    <p className="modal-description">{isCheckout ? "Record the vehicle condition at pickup to start this rental." : "Record the return readings to close out this rental."}</p>
+  return <Modal title={isCheckout ? "Vehicle handover" : "Return inspection"} onClose={onClose}>
+    <p className="modal-description">{isCheckout ? "Record the pickup readings, inspect the vehicle and collect the client’s signature." : "Complete the return inspection and client sign-off to mark this booking complete."}</p>
     <form className="form-grid" onSubmit={save}>
-      <Field label="Odometer (km)"><input name="odometer" type="number" min="0" placeholder="e.g. 48,250" defaultValue={isCheckout ? undefined : booking.returnOdometer ?? undefined} required /></Field>
+      <Field label="Odometer (km)"><input name="odometer" type="number" min={isCheckout ? 0 : booking.checkoutOdometer ?? 0} placeholder="e.g. 48,250" value={isCheckout ? undefined : odometerText} onChange={(event) => !isCheckout && setOdometerText(event.target.value)} defaultValue={isCheckout ? undefined : undefined} required /></Field>
       <Field label="Fuel level"><select name="fuel" defaultValue={isCheckout ? "100" : String(booking.checkoutFuel ?? 100)}><option value="100">Full</option><option value="75">¾ tank</option><option value="50">½ tank</option><option value="25">¼ tank</option><option value="0">Empty</option></select></Field>
       <Field label={`${isCheckout ? "Pickup" : "Return"} note (optional)`} wide><textarea name="note" rows={2} defaultValue={isCheckout ? booking.checkoutNote : booking.returnNote} placeholder="Note existing marks or customer comments" /></Field>
-      <div className="form-field-wide"><DialogActions onCancel={onClose} submit={isCheckout ? "Start rental" : "Complete return"} /></div>
+      {isCheckout && (booking.depositAmount ?? vehicle?.depositAmount ?? 0) > 0 && <label className="deposit-confirmation form-field-wide"><input type="checkbox" name="depositReceived" required /><span>Confirm the {formatMoney(booking.depositAmount ?? vehicle?.depositAmount ?? 0)} vehicle deposit has been collected.</span></label>}
+      {!isCheckout && <div className="mileage-settlement form-field-wide" aria-live="polite"><div><span>Distance travelled</span><strong>{distanceKm.toLocaleString()} km</strong></div><div><span>Included · {rentalDays} {rentalDays === 1 ? "day" : "days"}</span><strong>{includedKm.toLocaleString()} km</strong></div><div><span>Excess mileage</span><strong>{excessKm.toLocaleString()} km × {formatMoney(mileageRate)}/km</strong></div><div className="mileage-fee"><span>Excess mileage charge</span><strong>{formatMoney(excessCharge)}</strong></div></div>}
+      <InspectionChecklistFields value={checklist} onChange={setChecklist} />
+      <ClientSignature name={signatoryName} onNameChange={setSignatoryName} signature={signature} onSignatureChange={setSignature} initialName={customer?.name ?? ""} />
+      {error && <p className="form-error form-field-wide" role="alert">{error}</p>}
+      <div className="form-field-wide"><DialogActions onCancel={onClose} submit={isCheckout ? "Save handover & start" : "Save inspection & complete"} /></div>
     </form>
   </Modal>;
 }
@@ -137,10 +195,41 @@ function BookingPriceSummary({ vehicle, startDate, endDate }: { vehicle?: Vehicl
   if (!startDate || !endDate || endDate <= startDate) return <div className="booking-price-summary" role="status">Choose a return date after pickup to see the total.</div>;
   const days = nightsBetween(startDate, endDate);
   return <div className="booking-price-summary" role="status" aria-live="polite">
-    <span>ESTIMATED RENTAL TOTAL</span>
+    <span>RENTAL CHARGE</span>
     <strong>{formatMoney(vehicle.dailyRate * days)}</strong>
-    <small>{days} {days === 1 ? "day" : "days"} × {formatMoney(vehicle.dailyRate)} per day</small>
+    <small>{days} {days === 1 ? "day" : "days"} × {formatMoney(vehicle.dailyRate)} per day · {vehicle.vehicleType}</small>
+    <span className="booking-deposit-label">Deposit required at pickup <strong>{formatMoney(vehicle.depositAmount)}</strong></span>
   </div>;
+}
+
+type PrebookingRequestView = { id: string; vehicleId: string; customerName: string; email: string; phone: string; driverLicence: string; startDate: string; endDate: string; message: string; status: "New" | "Contacted" | "Accepted" | "Declined"; createdAt: string };
+
+function PublicPrebookingInbox({ vehicles }: { vehicles: Vehicle[] }) {
+  const [requests, setRequests] = useState<PrebookingRequestView[]>([]);
+  const [error, setError] = useState("");
+  useEffect(() => {
+    fetch("/api/prebooking-requests", { cache: "no-store" }).then(async (response) => {
+      const result = await response.json();
+      if (!response.ok) throw new Error(result.error ?? "Could not load pre-booking requests.");
+      setRequests(result.requests as PrebookingRequestView[]);
+    }).catch((reason: unknown) => setError(reason instanceof Error ? reason.message : "Could not load pre-booking requests."));
+  }, []);
+  async function setStatus(id: string, status: PrebookingRequestView["status"]) {
+    setError("");
+    try {
+      const response = await fetch("/api/prebooking-requests", { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ id, status }) });
+      const result = await response.json();
+      if (!response.ok) throw new Error(result.error ?? "Could not update request.");
+      setRequests((current) => current.map((item) => item.id === id ? result.request as PrebookingRequestView : item));
+    } catch (reason) { setError(reason instanceof Error ? reason.message : "Could not update request."); }
+  }
+  return <section className="panel public-requests-panel"><div className="panel-heading"><div><p className="eyebrow">CUSTOMER ENQUIRIES</p><h2>Public pre-booking requests</h2></div><span className="result-count">{requests.filter((request) => request.status === "New").length} new</span></div>
+    {error && <p className="form-error" role="alert">{error}</p>}
+    {!requests.length && !error ? <p className="public-requests-empty">Vehicle requests submitted through shared links will appear here.</p> : <div className="public-request-list">{requests.map((request) => {
+      const vehicle = vehicles.find((item) => item.id === request.vehicleId);
+      return <article className="public-request-card" key={request.id}><div className="public-request-heading"><div><strong>{request.customerName}</strong><small>{vehicle ? `${vehicle.year} ${vehicle.make} ${vehicle.model}` : "Vehicle"} · {dateLabel(request.startDate)} to {dateLabel(request.endDate)}</small></div><span className={`status-pill status-${slug(request.status)}`}>{request.status}</span></div><div className="public-request-contact"><a href={`mailto:${encodeURIComponent(request.email)}`}>{request.email}</a><a href={`tel:${request.phone.replaceAll(" ", "")}`}>{request.phone}</a><span>Licence: {request.driverLicence}</span></div>{request.message && <p>{request.message}</p>}<div className="public-request-actions"><a className="text-action" href={`https://classicrides.online/rent/${encodeURIComponent(request.vehicleId)}`} target="_blank" rel="noreferrer">Open shared listing</a><select aria-label={`Update status for ${request.customerName}`} value={request.status} onChange={(event) => void setStatus(request.id, event.target.value as PrebookingRequestView["status"])}><option>New</option><option>Contacted</option><option>Accepted</option><option>Declined</option></select></div></article>;
+    })}</div>}
+  </section>;
 }
 
 function BookingsWorkspace() {
@@ -168,16 +257,17 @@ function BookingsWorkspace() {
     const overlaps = bookings.some((booking) => booking.vehicleId === vehicleId && ["Confirmed", "Active"].includes(booking.status) && startDate < booking.endDate && endDate > booking.startDate);
     if (overlaps) { setError("This vehicle already has a booking for part of those dates."); return; }
     const vehicle = vehicles.find((item) => item.id === vehicleId); if (!vehicle) return;
-    addBooking({ customerId, vehicleId, startDate, endDate, total: vehicle.dailyRate * nightsBetween(startDate, endDate), note: String(form.get("note")).trim() }); setOpen(false);
+    addBooking({ customerId, vehicleId, startDate, endDate, total: vehicle.dailyRate * nightsBetween(startDate, endDate), depositAmount: vehicle.depositAmount, mileageAllowanceKmPerDay: vehicle.mileageAllowanceKmPerDay, excessMileageRatePerKm: vehicle.excessMileageRatePerKm, note: String(form.get("note")).trim() }); setOpen(false);
   }
   if (!ready) return <LoadingState />;
   return <>
     <div className="list-toolbar booking-toolbar"><label className="search-box"><span aria-hidden="true">⌕</span><input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Search bookings" aria-label="Search bookings" /></label><select className="filter-select" aria-label="Filter booking status" value={filter} onChange={(event) => setFilter(event.target.value)}><option>All bookings</option><option>Confirmed</option><option>Active</option><option>Completed</option><option>Cancelled</option></select><span className="result-count">{filtered.length} {filtered.length === 1 ? "booking" : "bookings"}</span></div>
-    {bookings.length === 0 ? <EmptyState icon="▤" title="Your first booking is a few steps away" detail="Add a vehicle and a customer, then create a booking with pickup and return dates." action={<div className="empty-actions"><Link href="/fleet" className="button button-quiet">Add vehicle</Link><Link href="/customers" className="button button-quiet">Add customer</Link><button className="button button-primary" onClick={() => setOpen(true)}>＋ New booking</button></div>} /> : filtered.length === 0 ? <EmptyState icon="⌕" title="No bookings found" detail="Change the status filter or search by booking reference." /> : <TableFrame><thead><tr><th>BOOKING</th><th>CUSTOMER</th><th>VEHICLE</th><th>DATES</th><th>TOTAL</th><th>STATUS</th><th>ACTION</th></tr></thead><tbody>{filtered.map((booking) => <tr key={booking.id}><td data-label="Booking"><span className="table-primary">{booking.reference}</span>{booking.checkoutOdometer !== undefined && <div className="table-secondary">Pickup: {booking.checkoutOdometer.toLocaleString()} km · {booking.checkoutFuel ?? 0}% fuel</div>}{booking.checkoutNote && <div className="table-secondary">Pickup note: {booking.checkoutNote}</div>}{booking.returnOdometer !== undefined && <div className="table-secondary">Return: {booking.returnOdometer.toLocaleString()} km · {booking.returnFuel ?? 0}% fuel</div>}{booking.returnNote && <div className="table-secondary">Return note: {booking.returnNote}</div>}</td><td data-label="Customer">{customerName(customers.find((item) => item.id === booking.customerId))}</td><td data-label="Vehicle">{vehicleName(vehicles.find((item) => item.id === booking.vehicleId))}</td><td data-label="Dates"><span>{dateLabel(booking.startDate)}</span><div className="table-secondary">to {dateLabel(booking.endDate)}</div></td><td data-label="Total">{formatMoney(booking.total)}</td><td data-label="Status"><span className={`status-pill status-${slug(booking.status)}`}>{booking.status}</span></td><td data-label="Action"><div className="row-actions">{booking.status === "Confirmed" && <button className="text-action" onClick={() => setFlow({ booking, action: "checkout" })}>Start rental</button>}{booking.status === "Active" && <button className="text-action" onClick={() => setFlow({ booking, action: "return" })}>Return vehicle</button>}{booking.status === "Confirmed" && <button className="text-action text-action-muted" onClick={() => setCancelPending(booking)}>Cancel</button>}</div></td></tr>)}</tbody></TableFrame>}
+    {bookings.length === 0 ? <EmptyState icon="▤" title="Your first booking is a few steps away" detail="Add a vehicle and a customer, then create a booking with pickup and return dates." action={<div className="empty-actions"><Link href="/fleet" className="button button-quiet">Add vehicle</Link><Link href="/customers" className="button button-quiet">Add customer</Link><button className="button button-primary" onClick={() => setOpen(true)}>＋ New booking</button></div>} /> : filtered.length === 0 ? <EmptyState icon="⌕" title="No bookings found" detail="Change the status filter or search by booking reference." /> : <TableFrame><thead><tr><th>BOOKING</th><th>CUSTOMER</th><th>VEHICLE</th><th>DATES</th><th>TOTAL</th><th>STATUS</th><th>ACTION</th></tr></thead><tbody>{filtered.map((booking) => <tr key={booking.id}><td data-label="Booking"><span className="table-primary">{booking.reference}</span>{booking.checkoutOdometer !== undefined && <div className="table-secondary">Pickup: {booking.checkoutOdometer.toLocaleString()} km · {booking.checkoutFuel ?? 0}% fuel</div>}{booking.checkoutNote && <div className="table-secondary">Pickup note: {booking.checkoutNote}</div>}{booking.returnOdometer !== undefined && <div className="table-secondary">Return: {booking.returnOdometer.toLocaleString()} km · {booking.returnFuel ?? 0}% fuel</div>}{booking.returnNote && <div className="table-secondary">Return note: {booking.returnNote}</div>}{booking.distanceKm !== undefined && <div className="table-secondary">Distance: {booking.distanceKm.toLocaleString()} km · included {booking.includedMileageKm?.toLocaleString()} km</div>}{(booking.excessMileageCharge ?? 0) > 0 && <div className="table-secondary">Excess mileage: {formatMoney(booking.excessMileageCharge ?? 0)}</div>}{(booking.depositAmount ?? 0) > 0 && <div className="table-secondary">Deposit: {formatMoney(booking.depositAmount ?? 0)}</div>}</td><td data-label="Customer">{customerName(customers.find((item) => item.id === booking.customerId))}</td><td data-label="Vehicle">{vehicleName(vehicles.find((item) => item.id === booking.vehicleId))}</td><td data-label="Dates"><span>{dateLabel(booking.startDate)}</span><div className="table-secondary">to {dateLabel(booking.endDate)}</div></td><td data-label="Total">{formatMoney(booking.total + (booking.excessMileageCharge ?? 0))}</td><td data-label="Status"><span className={`status-pill status-${slug(booking.status)}`}>{booking.status}</span></td><td data-label="Action"><div className="row-actions">{booking.status === "Confirmed" && <button className="text-action" onClick={() => setFlow({ booking, action: "checkout" })}>Start rental</button>}{booking.status === "Active" && <button className="text-action" onClick={() => setFlow({ booking, action: "return" })}>Inspect & complete</button>}{booking.status === "Confirmed" && <button className="text-action text-action-muted" onClick={() => setCancelPending(booking)}>Cancel</button>}</div></td></tr>)}</tbody></TableFrame>}
+    <PublicPrebookingInbox vehicles={vehicles} />
     {open && <Modal title="Create a booking" onClose={() => { setOpen(false); setError(""); }}>
       {customers.length === 0 || vehicles.length === 0 ? <div className="setup-needed"><p>Add a renter and an available vehicle before creating a booking.</p><div className="empty-actions">{vehicles.length === 0 && <Link className="button button-quiet" href="/fleet">Add vehicle</Link>}{customers.length === 0 && <Link className="button button-quiet" href="/customers">Add customer</Link>}</div></div> : <form className="form-grid" onSubmit={save}>
         <Field label="Customer" wide><select name="customerId" required value={customerId} onChange={(event) => setCustomerId(event.target.value)}><option value="" disabled>Choose a customer</option>{customers.map((customer) => <option key={customer.id} value={customer.id}>{customer.name} · {customer.phone}</option>)}</select></Field>
-        <Field label="Vehicle" wide><select name="vehicleId" required value={vehicleId} onChange={(event) => setVehicleId(event.target.value)}><option value="" disabled>Choose a vehicle</option>{vehicles.filter((vehicle) => vehicle.status === "Available").map((vehicle) => <option key={vehicle.id} value={vehicle.id}>{vehicle.registration} · {vehicle.make} {vehicle.model} · {formatMoney(vehicle.dailyRate)}/day</option>)}</select></Field>
+        <Field label="Vehicle" wide><select name="vehicleId" required value={vehicleId} onChange={(event) => setVehicleId(event.target.value)}><option value="" disabled>Choose a vehicle</option>{vehicles.filter((vehicle) => vehicle.status === "Available").map((vehicle) => <option key={vehicle.id} value={vehicle.id}>{vehicle.registration} · {vehicle.vehicleType} · {vehicle.make} {vehicle.model} · {formatMoney(vehicle.dailyRate)}/day · deposit {formatMoney(vehicle.depositAmount)}</option>)}</select></Field>
         <Field label="Pickup date"><input name="startDate" type="date" min={minimumStartDate} value={startDate} onChange={(event) => { const next = event.target.value; setStartDate(next); if (endDate <= next) setEndDate(dayAfter(next)); }} required /></Field>
         <Field label="Return date"><input name="endDate" type="date" min={dayAfter(startDate || minimumStartDate)} value={endDate} onChange={(event) => setEndDate(event.target.value)} required /></Field>
         <div className="form-field-wide"><BookingPriceSummary vehicle={selectedVehicle} startDate={startDate} endDate={endDate} /></div>
@@ -219,22 +309,69 @@ function ReportsWorkspace() {
   const { bookings, customers, vehicles, maintenance, ready } = useRentalData();
   if (!ready) return <LoadingState />;
   const completed = bookings.filter((booking) => booking.status === "Completed");
-  const revenue = completed.reduce((sum, booking) => sum + booking.total, 0);
+  const revenue = completed.reduce((sum, booking) => sum + booking.total + (booking.excessMileageCharge ?? 0), 0);
   const active = bookings.filter((booking) => booking.status === "Active").length;
   const reserved = bookings.filter((booking) => booking.status === "Confirmed").length;
   const openJobs = maintenance.filter((job) => job.status !== "Completed").length;
   const committedVehicleCount = new Set(bookings.filter((booking) => ["Active", "Confirmed"].includes(booking.status)).map((booking) => booking.vehicleId)).size;
   const fleetCommitment = vehicles.length ? Math.round((committedVehicleCount / vehicles.length) * 100) : 0;
   function downloadCsv() {
-    const rows = [["Reference", "Customer", "Vehicle", "Pickup", "Return", "Status", "Total USD"], ...bookings.map((booking) => [booking.reference, customerName(customers.find((item) => item.id === booking.customerId)), vehicleName(vehicles.find((item) => item.id === booking.vehicleId)), booking.startDate, booking.endDate, booking.status, String(booking.total)])];
+    const rows = [["Reference", "Customer", "Vehicle", "Pickup", "Return", "Distance km", "Excess mileage charge USD", "Status", "Total USD"], ...bookings.map((booking) => [booking.reference, customerName(customers.find((item) => item.id === booking.customerId)), vehicleName(vehicles.find((item) => item.id === booking.vehicleId)), booking.startDate, booking.endDate, booking.distanceKm === undefined ? "" : String(booking.distanceKm), String(booking.excessMileageCharge ?? 0), booking.status, String(booking.total + (booking.excessMileageCharge ?? 0))])];
     const csv = rows.map((row) => row.map((cell) => `"${String(cell).replaceAll('"', '""')}"`).join(",")).join("\n");
-    const url = URL.createObjectURL(new Blob([csv], { type: "text/csv;charset=utf-8" })); const link = document.createElement("a"); link.href = url; link.download = "spiritus-bookings.csv"; link.click(); URL.revokeObjectURL(url);
+    const url = URL.createObjectURL(new Blob([csv], { type: "text/csv;charset=utf-8" })); const link = document.createElement("a"); link.href = url; link.download = "classic-rides-bookings.csv"; link.click(); URL.revokeObjectURL(url);
   }
   return <>
     <div className="report-actions"><p>Live totals from records in this workspace.</p><button className="button button-quiet" onClick={downloadCsv} disabled={bookings.length === 0}>↓ Export bookings CSV</button></div>
     <section className="report-grid"><article className="report-card"><span className="eyebrow">COMPLETED RENTALS</span><strong>{completed.length}</strong><small>closed bookings</small></article><article className="report-card"><span className="eyebrow">REVENUE RECORDED</span><strong>{formatMoney(revenue)}</strong><small>completed booking totals</small></article><article className="report-card"><span className="eyebrow">FLEET COMMITTED</span><strong>{fleetCommitment}%</strong><small>{committedVehicleCount} of {vehicles.length} vehicles with an active or upcoming booking</small><div className="report-progress"><i style={{ width: `${fleetCommitment}%` }} /></div></article><article className="report-card"><span className="eyebrow">OPEN MAINTENANCE</span><strong>{openJobs}</strong><small>jobs requiring attention</small></article></section>
-    {bookings.length === 0 ? <EmptyState icon="▥" title="Your reports are ready" detail="Once your first booking is created, this view will summarize completed rentals, revenue, and fleet activity." action={<Link className="button button-primary" href="/bookings">Go to bookings</Link>} /> : <section className="panel report-table-panel"><div className="panel-heading"><div><p className="eyebrow">RECENT ACTIVITY</p><h2>Latest bookings</h2></div><Link className="text-link" href="/bookings">All bookings →</Link></div><TableFrame><thead><tr><th>REFERENCE</th><th>CUSTOMER</th><th>VEHICLE</th><th>DATES</th><th>STATUS</th><th>TOTAL</th></tr></thead><tbody>{bookings.slice(0, 8).map((booking) => <tr key={booking.id}><td data-label="Reference"><span className="table-primary">{booking.reference}</span></td><td data-label="Customer">{customerName(customers.find((item) => item.id === booking.customerId))}</td><td data-label="Vehicle">{vehicleName(vehicles.find((item) => item.id === booking.vehicleId))}</td><td data-label="Dates">{dateLabel(booking.startDate)} – {dateLabel(booking.endDate)}</td><td data-label="Status"><span className={`status-pill status-${slug(booking.status)}`}>{booking.status}</span></td><td data-label="Total">{formatMoney(booking.total)}</td></tr>)}</tbody></TableFrame></section>}
+    {bookings.length === 0 ? <EmptyState icon="▥" title="Your reports are ready" detail="Once your first booking is created, this view will summarize completed rentals, revenue, and fleet activity." action={<Link className="button button-primary" href="/bookings">Go to bookings</Link>} /> : <section className="panel report-table-panel"><div className="panel-heading"><div><p className="eyebrow">RECENT ACTIVITY</p><h2>Latest bookings</h2></div><Link className="text-link" href="/bookings">All bookings →</Link></div><TableFrame><thead><tr><th>REFERENCE</th><th>CUSTOMER</th><th>VEHICLE</th><th>DATES</th><th>STATUS</th><th>TOTAL</th></tr></thead><tbody>{bookings.slice(0, 8).map((booking) => <tr key={booking.id}><td data-label="Reference"><span className="table-primary">{booking.reference}</span></td><td data-label="Customer">{customerName(customers.find((item) => item.id === booking.customerId))}</td><td data-label="Vehicle">{vehicleName(vehicles.find((item) => item.id === booking.vehicleId))}</td><td data-label="Dates">{dateLabel(booking.startDate)} – {dateLabel(booking.endDate)}</td><td data-label="Status"><span className={`status-pill status-${slug(booking.status)}`}>{booking.status}</span></td><td data-label="Total">{formatMoney(booking.total + (booking.excessMileageCharge ?? 0))}</td></tr>)}</tbody></TableFrame></section>}
   </>;
+}
+
+type TeamUserView = { id: string; email: string; name: string; role: string; active: boolean; createdAt: string };
+type TeamInviteView = { id: string; email: string; role: string; expiresAt: string; createdAt: string };
+
+function TeamWorkspace() {
+  const { currentUser } = useRentalData();
+  const [users, setUsers] = useState<TeamUserView[]>([]);
+  const [invites, setInvites] = useState<TeamInviteView[]>([]);
+  const [email, setEmail] = useState("");
+  const [role, setRole] = useState<"manager" | "sales">("sales");
+  const [error, setError] = useState("");
+  const [notice, setNotice] = useState("");
+  const [inviteUrl, setInviteUrl] = useState("");
+  const [busy, setBusy] = useState(false);
+  useEffect(() => {
+    fetch("/api/team", { cache: "no-store" }).then(async (response) => {
+      const data = await response.json(); if (!response.ok) throw new Error(data.error ?? "Could not load the team.");
+      setUsers(data.users as TeamUserView[]); setInvites(data.invites as TeamInviteView[]);
+    }).catch((reason: unknown) => setError(reason instanceof Error ? reason.message : "Could not load the team."));
+  }, []);
+  async function invite(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault(); setBusy(true); setError(""); setNotice(""); setInviteUrl("");
+    try {
+      const response = await fetch("/api/team", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ email, role }) });
+      const result = await response.json(); if (!response.ok) throw new Error(result.error ?? "Could not create invitation.");
+      setInviteUrl(result.invitationUrl); setNotice(result.message); setEmail("");
+      const list = await fetch("/api/team", { cache: "no-store" }).then((item) => item.json());
+      if (list.users) { setUsers(list.users as TeamUserView[]); setInvites(list.invites as TeamInviteView[]); }
+    } catch (reason) { setError(reason instanceof Error ? reason.message : "Could not create invitation."); }
+    finally { setBusy(false); }
+  }
+  async function copyInvite() {
+    try { await navigator.clipboard.writeText(inviteUrl); setNotice("Invitation link copied."); }
+    catch { window.prompt("Copy this invitation link", inviteUrl); }
+  }
+  const mayInviteManager = currentUser?.role === "super_admin";
+  return <div className="team-access-layout">
+    <section className="panel team-invite-panel"><div className="panel-heading"><div><p className="eyebrow">INVITE STAFF</p><h2>Give your team access</h2></div></div><p className="team-access-help">Invite a manager or sales colleague. Invitations expire after seven days.</p>
+      <form className="team-invite-form" onSubmit={invite}><label>Email address<input type="email" autoComplete="email" required value={email} onChange={(event) => setEmail(event.target.value)} placeholder="person@example.com" /></label><label>Role<select value={role} onChange={(event) => setRole(event.target.value as "manager" | "sales")}><option value="sales">Sales</option>{mayInviteManager && <option value="manager">Manager</option>}</select></label><button className="button button-primary" type="submit" disabled={busy}>{busy ? "Creating…" : "Send invitation"}</button></form>
+      {error && <p className="form-error team-notice" role="alert">{error}</p>}{notice && <p className="team-notice" role="status">{notice}</p>}{inviteUrl && <div className="invite-link-box"><input aria-label="Invitation link" readOnly value={inviteUrl} /><button type="button" className="button button-quiet" onClick={() => void copyInvite()}>Copy link</button></div>}
+      {currentUser?.role === "manager" && <p className="form-hint">Managers can invite sales staff. Only the super admin can invite another manager or change company settings.</p>}
+    </section>
+    <section className="panel team-directory-panel"><div className="panel-heading"><div><p className="eyebrow">WORKSPACE MEMBERS</p><h2>People with access</h2></div><span className="result-count">{users.length} active</span></div>{users.length === 0 ? <p className="team-access-help">No workspace users yet.</p> : <div className="team-member-list">{users.map((user) => <article className="team-member-row" key={user.id}><span className="team-member-avatar">{user.name.slice(0, 1).toUpperCase()}</span><div><strong>{user.name}</strong><small>{user.email}</small></div><span className="status-pill status-available">{user.role.replace("_", " ")}</span></article>)}</div>}
+      {invites.length > 0 && <><p className="eyebrow team-pending-title">PENDING INVITATIONS</p><div className="team-member-list">{invites.map((invite) => <article className="team-member-row" key={invite.id}><span className="team-member-avatar team-invite-avatar">✉</span><div><strong>{invite.email}</strong><small>{invite.role} · expires {dateLabel(invite.expiresAt)}</small></div><span className="status-pill status-confirmed">Invited</span></article>)}</div></>}
+    </section>
+  </div>;
 }
 
 function LoadingState() { return <div className="loading-state"><span className="loading-spinner" />Loading workspace…</div>; }
@@ -245,7 +382,7 @@ export function ModuleWorkspace({ module }: { module: string }) {
   if (module === "settings") return <CompanySettingsWorkspace />;
   if (module === "inspections") return <InspectionWorkspace />;
   if (!page) return <AppShell><PageTopbar title="Page not found" /><main className="module-wrap"><h1>Page not found</h1><Link href="/">Return to overview</Link></main></AppShell>;
-  const Action = module === "reports" ? null : <button className="button button-primary page-action" onClick={() => setOpen(true)}><span aria-hidden="true">＋</span>{page.action}</button>;
+  const Action = module === "reports" || module === "team" ? null : <button className="button button-primary page-action" onClick={() => setOpen(true)}><span aria-hidden="true">＋</span>{page.action}</button>;
   return <AppShell active={page.title}>
     <PageTopbar title={page.title} />
     <main className="module-wrap">
@@ -255,6 +392,7 @@ export function ModuleWorkspace({ module }: { module: string }) {
       {module === "bookings" && <BookingsWorkspace key={open ? "booking-open" : "booking-closed"} />}
       {module === "maintenance" && <MaintenanceWorkspace />}
       {module === "reports" && <ReportsWorkspace />}
+      {module === "team" && <TeamWorkspace />}
     </main>
     {open && module === "bookings" && <BookingModalBridge onClose={() => setOpen(false)} />}
     {open && module === "fleet" && <CreateVehicleBridge onClose={() => setOpen(false)} />}
@@ -288,14 +426,14 @@ function BookingsCreateOnly({ onClose }: { onClose: () => void }) {
       return;
     }
     if (!selectedVehicle) return;
-    addBooking({ customerId: selectedCustomerId, vehicleId: selectedVehicleId, startDate: pickup, endDate: returned, total: selectedVehicle.dailyRate * nightsBetween(pickup, returned), note: String(form.get("note")).trim() });
+    addBooking({ customerId: selectedCustomerId, vehicleId: selectedVehicleId, startDate: pickup, endDate: returned, total: selectedVehicle.dailyRate * nightsBetween(pickup, returned), depositAmount: selectedVehicle.depositAmount, mileageAllowanceKmPerDay: selectedVehicle.mileageAllowanceKmPerDay, excessMileageRatePerKm: selectedVehicle.excessMileageRatePerKm, note: String(form.get("note")).trim() });
     onClose();
   }
 
   return <Modal title="Create a booking" onClose={onClose}>
     {customers.length === 0 || vehicles.length === 0 ? <div className="setup-needed"><p>Add a renter and an available vehicle before creating a booking.</p><div className="empty-actions">{vehicles.length === 0 && <Link className="button button-quiet" href="/fleet">Add vehicle</Link>}{customers.length === 0 && <Link className="button button-quiet" href="/customers">Add customer</Link>}</div></div> : <form className="form-grid" onSubmit={save}>
       <Field label="Customer" wide><select name="customerId" value={customerId} onChange={(event) => setCustomerId(event.target.value)} required><option value="" disabled>Choose a customer</option>{customers.map((customer) => <option key={customer.id} value={customer.id}>{customer.name} · {customer.phone}</option>)}</select></Field>
-      <Field label="Vehicle" wide><select name="vehicleId" value={vehicleId} onChange={(event) => setVehicleId(event.target.value)} required><option value="" disabled>Choose a vehicle</option>{vehicles.filter((vehicle) => vehicle.status === "Available").map((vehicle) => <option key={vehicle.id} value={vehicle.id}>{vehicle.registration} · {vehicle.make} {vehicle.model} · {formatMoney(vehicle.dailyRate)}/day</option>)}</select></Field>
+      <Field label="Vehicle" wide><select name="vehicleId" value={vehicleId} onChange={(event) => setVehicleId(event.target.value)} required><option value="" disabled>Choose a vehicle</option>{vehicles.filter((vehicle) => vehicle.status === "Available").map((vehicle) => <option key={vehicle.id} value={vehicle.id}>{vehicle.registration} · {vehicle.vehicleType} · {vehicle.make} {vehicle.model} · {formatMoney(vehicle.dailyRate)}/day · deposit {formatMoney(vehicle.depositAmount)}</option>)}</select></Field>
       <Field label="Pickup date"><input name="startDate" type="date" min={today} value={startDate} onChange={(event) => { const next = event.target.value; setStartDate(next); if (endDate <= next) setEndDate(dayAfter(next)); }} required /></Field>
       <Field label="Return date"><input name="endDate" type="date" min={dayAfter(startDate || today)} value={endDate} onChange={(event) => setEndDate(event.target.value)} required /></Field>
       <div className="form-field-wide"><BookingPriceSummary vehicle={selectedVehicle} startDate={startDate} endDate={endDate} /></div>
@@ -307,12 +445,53 @@ function BookingsCreateOnly({ onClose }: { onClose: () => void }) {
 }
 
 function CreateVehicleBridge({ onClose }: { onClose: () => void }) {
-  const { addVehicle } = useRentalData(); function save(event: FormEvent<HTMLFormElement>) { event.preventDefault(); const form = new FormData(event.currentTarget); addVehicle({ registration: String(form.get("registration")).trim().toUpperCase(), make: String(form.get("make")).trim(), model: String(form.get("model")).trim(), year: Number(form.get("year")), dailyRate: Number(form.get("dailyRate")), transmission: String(form.get("transmission")), status: "Available" }); onClose(); }
-  return <Modal title="Add a vehicle" onClose={onClose}><form className="form-grid" onSubmit={save}><Field label="Registration"><input name="registration" placeholder="e.g. AAZ 1234" required maxLength={16} /></Field><Field label="Make"><input name="make" placeholder="Toyota" required /></Field><Field label="Model"><input name="model" placeholder="Corolla Cross" required /></Field><Field label="Year"><input name="year" type="number" min="1980" max="2035" defaultValue={new Date().getFullYear()} required /></Field><Field label="Transmission"><select name="transmission" defaultValue="Automatic"><option>Automatic</option><option>Manual</option></select></Field><Field label="Day rate (USD)"><input name="dailyRate" type="number" min="1" placeholder="65" required /></Field><div className="form-field-wide"><DialogActions onCancel={onClose} submit="Add vehicle" /></div></form></Modal>;
+  const { addVehicle } = useRentalData();
+  function save(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    const form = new FormData(event.currentTarget);
+    addVehicle({ registration: String(form.get("registration")).trim().toUpperCase(), make: String(form.get("make")).trim(), model: String(form.get("model")).trim(), year: Number(form.get("year")), dailyRate: Number(form.get("dailyRate")), vehicleType: String(form.get("vehicleType")) as Vehicle["vehicleType"], depositAmount: Number(form.get("depositAmount")), mileageAllowanceKmPerDay: Number(form.get("mileageAllowanceKmPerDay")), excessMileageRatePerKm: Number(form.get("excessMileageRatePerKm")), transmission: String(form.get("transmission")), status: "Available" });
+    onClose();
+  }
+  return <Modal title="Add a vehicle" onClose={onClose}><form className="form-grid" onSubmit={save}>
+    <Field label="Registration"><input name="registration" placeholder="e.g. AAZ 1234" required maxLength={16} /></Field>
+    <Field label="Make"><input name="make" placeholder="Toyota" required /></Field>
+    <Field label="Model"><input name="model" placeholder="Corolla Cross" required /></Field>
+    <Field label="Year"><input name="year" type="number" min="1980" max="2035" defaultValue={new Date().getFullYear()} required /></Field>
+    <Field label="Vehicle type"><select name="vehicleType" defaultValue="Budget" required><option>Budget</option><option>Premium</option><option>SUV</option></select></Field>
+    <Field label="Transmission"><select name="transmission" defaultValue="Automatic"><option>Automatic</option><option>Manual</option></select></Field>
+    <Field label="Day rate (USD)"><input name="dailyRate" type="number" min="1" step="1" placeholder="65" required /></Field>
+    <Field label="Refundable deposit (USD)"><input name="depositAmount" type="number" min="1" step="1" placeholder="e.g. 100" required /></Field>
+    <Field label="Included mileage (km per day)"><input name="mileageAllowanceKmPerDay" type="number" min="0" step="1" placeholder="e.g. 200" required /></Field>
+    <Field label="Excess mileage (USD per km)"><input name="excessMileageRatePerKm" type="number" min="0.01" step="0.01" placeholder="e.g. 0.25" required /></Field>
+    <p className="form-hint form-field-wide">Type, deposit, mileage allowance, and excess rate will be copied to each new booking.</p>
+    <div className="form-field-wide"><DialogActions onCancel={onClose} submit="Add vehicle" /></div>
+  </form></Modal>;
 }
 function CreateCustomerBridge({ onClose }: { onClose: () => void }) {
-  const { addCustomer } = useRentalData(); function save(event: FormEvent<HTMLFormElement>) { event.preventDefault(); const form = new FormData(event.currentTarget); addCustomer({ name: String(form.get("name")).trim(), phone: String(form.get("phone")).trim(), email: String(form.get("email")).trim(), licence: String(form.get("licence")).trim() }); onClose(); }
-  return <Modal title="Add a customer" onClose={onClose}><form className="form-grid" onSubmit={save}><Field label="Full name" wide><input name="name" placeholder="Customer name" required /></Field><Field label="Phone"><input name="phone" type="tel" placeholder="+263 77 000 0000" required /></Field><Field label="Email (optional)"><input name="email" type="email" placeholder="name@example.com" /></Field><Field label="Driver licence (optional)" wide><input name="licence" placeholder="Licence number" /></Field><div className="form-field-wide"><DialogActions onCancel={onClose} submit="Save customer" /></div></form></Modal>;
+  const { addCustomer } = useRentalData();
+  const [error, setError] = useState("");
+  const [busy, setBusy] = useState(false);
+  async function save(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault(); setError(""); setBusy(true); const form = new FormData(event.currentTarget);
+    try {
+      const idPhoto = form.get("idPhoto");
+      if (!(idPhoto instanceof File) || !idPhoto.size) throw new Error("Capture or choose an ID image to continue.");
+      addCustomer({ name: String(form.get("name")).trim(), phone: String(form.get("phone")).trim(), email: String(form.get("email")).trim(), licence: String(form.get("licence")).trim(), nextOfKinName: String(form.get("nextOfKinName")).trim(), nextOfKinPhone: String(form.get("nextOfKinPhone")).trim(), idNumber: String(form.get("idNumber")).trim(), idPhotoDataUrl: await compressIdentityImage(idPhoto), idPhotoName: idPhoto.name }); onClose();
+    } catch (reason) { setError(reason instanceof Error ? reason.message : "Could not save this customer."); }
+    finally { setBusy(false); }
+  }
+  return <Modal title="Add a customer" onClose={onClose}><form className="form-grid" onSubmit={save}>
+    <Field label="Full name" wide><input name="name" placeholder="Customer name" required /></Field>
+    <Field label="Phone"><input name="phone" type="tel" placeholder="+263 77 000 0000" required /></Field>
+    <Field label="Email"><input name="email" type="email" placeholder="name@example.com" required /></Field>
+    <Field label="Driver licence number"><input name="licence" placeholder="Licence number" required /></Field>
+    <Field label="ID number"><input name="idNumber" placeholder="National ID or passport" required /></Field>
+    <Field label="Next of kin full name"><input name="nextOfKinName" placeholder="Full name" required /></Field>
+    <Field label="Next of kin phone"><input name="nextOfKinPhone" type="tel" placeholder="+263 77 000 0000" required /></Field>
+    <Field label="Customer ID photo" wide><input name="idPhoto" type="file" accept="image/*" capture="environment" required /><small>Capture or choose a clear photo of the customer’s ID. The image is compressed before secure workspace storage.</small></Field>
+    {error && <p className="form-error form-field-wide" role="alert">{error}</p>}
+    <div className="form-field-wide"><div className="form-actions"><button className="button button-quiet" type="button" onClick={onClose}>Cancel</button><button className="button button-primary" type="submit" disabled={busy}>{busy ? "Saving…" : "Save customer"}</button></div></div>
+  </form></Modal>;
 }
 function CreateMaintenanceBridge({ onClose }: { onClose: () => void }) {
   const { vehicles, addMaintenance } = useRentalData(); function save(event: FormEvent<HTMLFormElement>) { event.preventDefault(); const form = new FormData(event.currentTarget); addMaintenance({ vehicleId: String(form.get("vehicleId")), title: String(form.get("title")).trim(), dueDate: String(form.get("dueDate")), cost: Number(form.get("cost") || 0), status: "Scheduled", note: String(form.get("note")).trim() }); onClose(); }

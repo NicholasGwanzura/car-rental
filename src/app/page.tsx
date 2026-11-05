@@ -1,5 +1,5 @@
-import { OverviewWorkspace } from "@/components/overview-workspace";
+import { ClassicRidesHome } from "@/components/classic-rides-home";
 
 export default function Home() {
-  return <OverviewWorkspace />;
+  return <ClassicRidesHome />;
 }

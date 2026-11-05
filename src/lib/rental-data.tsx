@@ -2,6 +2,7 @@
 
 import { createContext, useContext, useEffect, useMemo, useRef, useState, type FormEvent, type ReactNode } from "react";
 
+export type VehicleType = "Budget" | "Premium" | "SUV";
 export type Vehicle = {
   id: string;
   registration: string;
@@ -9,6 +10,10 @@ export type Vehicle = {
   model: string;
   year: number;
   dailyRate: number;
+  vehicleType: VehicleType;
+  depositAmount: number;
+  mileageAllowanceKmPerDay: number;
+  excessMileageRatePerKm: number;
   transmission: string;
   status: "Available" | "Unavailable";
   createdAt: string;
@@ -20,6 +25,11 @@ export type Customer = {
   phone: string;
   email: string;
   licence: string;
+  nextOfKinName?: string;
+  nextOfKinPhone?: string;
+  idNumber?: string;
+  idPhotoDataUrl?: string;
+  idPhotoName?: string;
   createdAt: string;
 };
 
@@ -33,6 +43,14 @@ export type Booking = {
   startDate: string;
   endDate: string;
   total: number;
+  depositAmount?: number;
+  depositStatus?: "Due" | "Held" | "Returned" | "None";
+  mileageAllowanceKmPerDay?: number;
+  excessMileageRatePerKm?: number;
+  distanceKm?: number;
+  includedMileageKm?: number;
+  excessMileageKm?: number;
+  excessMileageCharge?: number;
   status: BookingStatus;
   paymentStatus?: PaymentStatus;
   note: string;
@@ -56,16 +74,23 @@ export type MaintenanceJob = {
 };
 
 export type InspectionPhoto = { id: string; name: string; dataUrl: string };
+export type InspectionCheckStatus = "ok" | "attention" | "na";
+export type InspectionChecklist = Record<string, InspectionCheckStatus>;
 export type PrebookingInspection = {
   id: string;
   customerId: string;
   vehicleId: string;
   bookingId?: string;
+  stage?: "Pre-booking" | "Pickup" | "Return";
   inspectionDate: string;
   odometerKm: number;
   fuelPercent: number;
   condition: "Good" | "Fair" | "Needs attention";
   notes: string;
+  checklist?: InspectionChecklist;
+  signatoryName?: string;
+  signatureDataUrl?: string;
+  signedAt?: string;
   photos: InspectionPhoto[];
   createdAt: string;
 };
@@ -73,11 +98,14 @@ export type PrebookingInspection = {
 export type CompanyProfile = { name: string; email: string; phone: string; address: string; invoicePrefix: string; paymentInstructions: string };
 type StoreData = { vehicles: Vehicle[]; customers: Customer[]; bookings: Booking[]; maintenance: MaintenanceJob[]; inspections: PrebookingInspection[]; company: CompanyProfile };
 type SaveStatus = "idle" | "saving" | "saved" | "error";
+export type WorkspaceUser = { id: string; email: string; name: string; role: "super_admin" | "manager" | "sales" };
 type RentalContextValue = StoreData & {
   ready: boolean;
   saveStatus: SaveStatus;
+  currentUser: WorkspaceUser | null;
   retrySave: () => void;
   addVehicle: (vehicle: Omit<Vehicle, "id" | "createdAt">) => void;
+  updateVehicle: (id: string, changes: Partial<Vehicle>) => void;
   addCustomer: (customer: Omit<Customer, "id" | "createdAt">) => void;
   addBooking: (booking: Omit<Booking, "id" | "reference" | "createdAt" | "status">) => Booking;
   updateBooking: (id: string, changes: Partial<Booking>) => void;
@@ -89,33 +117,69 @@ type RentalContextValue = StoreData & {
 };
 
 const STORAGE_KEY = "spiritus-rental-workspace-v1";
-const defaultCompany: CompanyProfile = { name: "Your rental company", email: "", phone: "", address: "", invoicePrefix: "INV", paymentInstructions: "" };
+const defaultCompany: CompanyProfile = { name: "Classic Rides", email: "sales@classicrides.online", phone: "+263 772 313 286 · +263 777 879 154 · +44 7449 975828", address: "", invoicePrefix: "CR", paymentInstructions: "" };
 const emptyData: StoreData = { vehicles: [], customers: [], bookings: [], maintenance: [], inspections: [], company: defaultCompany };
+function normalizeData(input: Partial<StoreData>): StoreData {
+  const data = { ...emptyData, ...input };
+  return {
+    ...data,
+    company: {
+      ...data.company,
+      name: !data.company.name || data.company.name === "Your rental company" || data.company.name.toLowerCase().includes("spiritus") ? "Classic Rides" : data.company.name,
+      email: !data.company.email || data.company.email.toLowerCase().includes("spiritus") ? "sales@classicrides.online" : data.company.email,
+      invoicePrefix: !data.company.invoicePrefix || data.company.invoicePrefix === "INV" ? "CR" : data.company.invoicePrefix,
+    },
+    vehicles: data.vehicles.map((vehicle) => ({
+      ...vehicle,
+      vehicleType: vehicle.vehicleType ?? "Budget",
+      depositAmount: Number.isFinite(vehicle.depositAmount) ? vehicle.depositAmount : 0,
+      mileageAllowanceKmPerDay: Number.isFinite(vehicle.mileageAllowanceKmPerDay) ? vehicle.mileageAllowanceKmPerDay : 0,
+      excessMileageRatePerKm: Number.isFinite(vehicle.excessMileageRatePerKm) ? vehicle.excessMileageRatePerKm : 0,
+    })),
+    inspections: data.inspections.map((inspection) => ({ ...inspection, stage: inspection.stage ?? "Pre-booking" })),
+  };
+}
 const RentalContext = createContext<RentalContextValue | null>(null);
 
-function WorkspaceLogin({ onSuccess }: { onSuccess: (data: StoreData) => void }) {
+function WorkspaceLogin({ onSuccess }: { onSuccess: (data: StoreData, user: WorkspaceUser) => void }) {
+  const [email, setEmail] = useState("nick@spiritusglobal.tech");
+  const [name, setName] = useState("Nick Gwanzura");
   const [password, setPassword] = useState("");
   const [showPassword, setShowPassword] = useState(false);
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
+  const [setupRequired, setSetupRequired] = useState(false);
+  const [allowedEmail, setAllowedEmail] = useState("nick@spiritusglobal.tech");
+  useEffect(() => {
+    let mounted = true;
+    fetch("/api/auth/status", { cache: "no-store" }).then((response) => response.json()).then((result) => {
+      if (!mounted) return;
+      if (typeof result.email === "string") { setAllowedEmail(result.email); setEmail(result.email); }
+      setSetupRequired(Boolean(result.setupRequired));
+    }).catch(() => undefined);
+    return () => { mounted = false; };
+  }, []);
   async function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault(); setBusy(true); setError("");
     try {
-      const response = await fetch("/api/auth/login", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ password }) });
+      const response = await fetch(setupRequired ? "/api/auth/bootstrap" : "/api/auth/login", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(setupRequired ? { email, name, password } : { email, password }) });
       const result = await response.json();
       if (!response.ok) throw new Error(result.error ?? "Could not sign in.");
       const workspace = await fetch("/api/workspace", { cache: "no-store" });
       const stored = await workspace.json();
       if (!workspace.ok) throw new Error(stored.error ?? "Could not load your workspace.");
       setPassword("");
-      onSuccess({ ...emptyData, ...stored.data });
+      setSetupRequired(false);
+      onSuccess(normalizeData(stored.data), stored.user as WorkspaceUser);
     } catch (reason) { setError(reason instanceof Error ? reason.message : "Could not sign in."); }
     finally { setBusy(false); }
   }
   return <main className="workspace-login"><form className="workspace-login-card" onSubmit={submit}>
-    <div className="brand-mark login-brand">S</div><p className="eyebrow">SPIRITUS RENTAL</p><h1>Welcome back<span>.</span></h1><p>Sign in to your rental workspace.</p>
-    <label className="form-field"><span>Workspace password</span><div className="login-password-wrap"><input name="password" type={showPassword ? "text" : "password"} autoComplete="current-password" autoFocus required value={password} onChange={(event) => setPassword(event.target.value)} /><button className="password-visibility" type="button" aria-label={showPassword ? "Hide password" : "Show password"} aria-pressed={showPassword} onClick={() => setShowPassword((value) => !value)}>{showPassword ? "Hide" : "Show"}</button></div></label>
-    {error && <p className="login-error" role="alert">{error}</p>}<button className="button button-primary login-submit" type="submit" disabled={busy}>{busy ? "Signing in…" : "Sign in"}</button>
+    <div className="brand-mark login-brand">C</div><p className="eyebrow">CLASSIC RIDES</p><h1>{setupRequired ? "Set up your workspace" : "Welcome back"}<span>.</span></h1><p>{setupRequired ? "Create the first administrator account to protect your workspace." : "Sign in to your rental workspace."}</p>
+    {setupRequired && <label className="form-field"><span>Full name</span><input name="name" autoComplete="name" required value={name} onChange={(event) => setName(event.target.value)} /></label>}
+    <label className="form-field"><span>Work email</span><input name="email" type="email" autoComplete="username" required readOnly={setupRequired} value={setupRequired ? allowedEmail : email} onChange={(event) => setEmail(event.target.value)} /></label>
+    <label className="form-field"><span>{setupRequired ? "Create password" : "Password"}</span><div className="login-password-wrap"><input name="password" type={showPassword ? "text" : "password"} autoComplete={setupRequired ? "new-password" : "current-password"} minLength={setupRequired ? 12 : undefined} autoFocus required value={password} onChange={(event) => setPassword(event.target.value)} /><button className="password-visibility" type="button" aria-label={showPassword ? "Hide password" : "Show password"} aria-pressed={showPassword} onClick={() => setShowPassword((value) => !value)}>{showPassword ? "Hide" : "Show"}</button></div>{setupRequired && <small>Use at least 12 characters. This password is entered by you and stored as a salted hash.</small>}</label>
+    {error && <p className="login-error" role="alert">{error}</p>}<button className="button button-primary login-submit" type="submit" disabled={busy}>{busy ? "Please wait…" : setupRequired ? "Create administrator" : "Sign in"}</button>
   </form></main>;
 }
 
@@ -126,6 +190,7 @@ function makeId() {
 export function RentalDataProvider({ children }: { children: ReactNode }) {
   const [data, setData] = useState<StoreData>(emptyData);
   const [ready, setReady] = useState(false);
+  const [currentUser, setCurrentUser] = useState<WorkspaceUser | null>(null);
   const [databaseConnected, setDatabaseConnected] = useState(false);
   const [authRequired, setAuthRequired] = useState(false);
   const [saveStatus, setSaveStatus] = useState<SaveStatus>("idle");
@@ -188,9 +253,9 @@ export function RentalDataProvider({ children }: { children: ReactNode }) {
         if (response.ok) {
           const result = await response.json();
           if (mounted) {
-            const loaded = { ...emptyData, ...result.data };
+            const loaded = normalizeData(result.data);
             dataRef.current = loaded;
-            setData(loaded); setDatabaseConnected(true); setReady(true);
+            setData(loaded); setCurrentUser(result.user as WorkspaceUser ?? null); setDatabaseConnected(true); setReady(true);
           }
           return;
         }
@@ -203,7 +268,7 @@ export function RentalDataProvider({ children }: { children: ReactNode }) {
       try {
         const stored = localStorage.getItem(STORAGE_KEY);
         if (stored) {
-          const loaded = { ...emptyData, ...(JSON.parse(stored) as Partial<StoreData>) };
+          const loaded = normalizeData(JSON.parse(stored) as Partial<StoreData>);
           dataRef.current = loaded;
           setData(loaded);
         }
@@ -214,13 +279,15 @@ export function RentalDataProvider({ children }: { children: ReactNode }) {
     return () => { mounted = false; };
   }, []);
 
-  function replaceData(next: StoreData) {
+  function replaceData(next: StoreData, user: WorkspaceUser) {
+    next = normalizeData(next);
     dataRef.current = next;
     pendingSaveRef.current = null;
     saveVersionRef.current += 1;
     statusVersionRef.current += 1;
     setSaveStatus("idle");
     setData(next);
+    setCurrentUser(user);
     setAuthRequired(false);
     setDatabaseConnected(true);
     setReady(true);
@@ -242,7 +309,7 @@ export function RentalDataProvider({ children }: { children: ReactNode }) {
     function onStorage(event: StorageEvent) {
       if (event.key !== STORAGE_KEY || !event.newValue) return;
       try {
-        const next = { ...emptyData, ...JSON.parse(event.newValue) };
+        const next = normalizeData(JSON.parse(event.newValue));
         dataRef.current = next;
         setData(next);
       } catch { /* ignore an invalid cross-tab update */ }
@@ -253,13 +320,15 @@ export function RentalDataProvider({ children }: { children: ReactNode }) {
 
   const value = useMemo<RentalContextValue>(() => ({
     ...data,
+    currentUser,
     ready,
     saveStatus,
     retrySave,
     addVehicle: (vehicle) => updateData((current) => ({ ...current, vehicles: [{ ...vehicle, id: makeId(), createdAt: new Date().toISOString() }, ...current.vehicles] })),
+    updateVehicle: (id, changes) => updateData((current) => ({ ...current, vehicles: current.vehicles.map((vehicle) => vehicle.id === id ? { ...vehicle, ...changes } : vehicle) })),
     addCustomer: (customer) => updateData((current) => ({ ...current, customers: [{ ...customer, id: makeId(), createdAt: new Date().toISOString() }, ...current.customers] })),
     addBooking: (booking) => {
-      const created: Booking = { ...booking, id: makeId(), reference: `BK-${String(Date.now()).slice(-6)}`, status: "Confirmed", createdAt: new Date().toISOString() };
+      const created: Booking = { ...booking, depositStatus: (booking.depositAmount ?? 0) > 0 ? "Due" : "None", id: makeId(), reference: `BK-${String(Date.now()).slice(-6)}`, status: "Confirmed", createdAt: new Date().toISOString() };
       updateData((current) => ({ ...current, bookings: [created, ...current.bookings] }));
       return created;
     },
@@ -277,9 +346,9 @@ export function RentalDataProvider({ children }: { children: ReactNode }) {
       if (pendingSaveRef.current) throw new Error("Some changes haven’t been saved. Retry the save before signing out.");
       const response = await fetch("/api/auth/logout", { method: "POST" });
       if (!response.ok) throw new Error("Sign out could not be completed. Try again.");
-      setAuthRequired(true);
+      setAuthRequired(true); setCurrentUser(null);
     },
-  }), [data, ready, databaseConnected, saveStatus]);
+  }), [data, ready, databaseConnected, saveStatus, currentUser]);
 
   return <RentalContext.Provider value={value}>{!ready ? <div className="loading-state"><span className="loading-spinner" />Loading workspace…</div> : authRequired ? <WorkspaceLogin onSuccess={replaceData} /> : children}</RentalContext.Provider>;
 }
@@ -291,7 +360,7 @@ export function useRentalData() {
 }
 
 export function formatMoney(amount: number) {
-  return new Intl.NumberFormat("en-US", { style: "currency", currency: "USD", maximumFractionDigits: 0 }).format(amount);
+  return new Intl.NumberFormat("en-US", { style: "currency", currency: "USD", minimumFractionDigits: 0, maximumFractionDigits: 2 }).format(amount);
 }
 
 export function nightsBetween(start: string, end: string) {

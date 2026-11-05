@@ -4,7 +4,8 @@ import Link from "next/link";
 import { useMemo, useState, type ChangeEvent, type FormEvent } from "react";
 import { AppShell, PageTopbar } from "@/components/app-shell";
 import { WorkspaceDialog } from "@/components/workspace-dialog";
-import { useRentalData, type InspectionPhoto, type PrebookingInspection } from "@/lib/rental-data";
+import { ClientSignature, InspectionChecklistFields, inspectionChecklistItems } from "@/components/inspection-inputs";
+import { useRentalData, type InspectionChecklist, type InspectionPhoto, type PrebookingInspection } from "@/lib/rental-data";
 
 const PHOTO_LIMIT = 6;
 const PHOTO_SIZE_LIMIT = 500_000;
@@ -81,13 +82,16 @@ export function InspectionWorkspace() {
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
   const [saved, setSaved] = useState(false);
+  const [checklist, setChecklist] = useState<InspectionChecklist>({});
+  const [signature, setSignature] = useState("");
+  const [signatoryName, setSignatoryName] = useState("");
 
   const sorted = useMemo(() => [...inspections].sort((a, b) => b.inspectionDate.localeCompare(a.inspectionDate) || b.createdAt.localeCompare(a.createdAt)), [inspections]);
   const selected = sorted.find((item) => item.id === selectedId);
   const matchingBookings = bookings.filter((booking) => booking.customerId === customerId && booking.vehicleId === vehicleId);
 
   function resetForm() {
-    setOpen(false); setCustomerId(""); setVehicleId(""); setBookingId(""); setPhotos([]); setPhotoError(""); setError("");
+    setOpen(false); setCustomerId(""); setVehicleId(""); setBookingId(""); setPhotos([]); setPhotoError(""); setError(""); setChecklist({}); setSignature(""); setSignatoryName("");
   }
 
   async function addPhotos(event: ChangeEvent<HTMLInputElement>) {
@@ -107,13 +111,15 @@ export function InspectionWorkspace() {
   function save(event: FormEvent<HTMLFormElement>) {
     event.preventDefault(); setError("");
     if (!photos.length) { setError("Add at least one photo to complete the inspection."); return; }
+    if (inspectionChecklistItems.some((item) => !checklist[item.key])) { setError("Complete every checklist item before saving the inspection."); return; }
+    if (!signature || !signatoryName.trim()) { setError("Enter the client name and capture their signature."); return; }
     const form = new FormData(event.currentTarget);
     const created = addInspection({
       customerId: String(form.get("customerId")), vehicleId: String(form.get("vehicleId")),
-      ...(bookingId ? { bookingId } : {}), inspectionDate: String(form.get("inspectionDate")),
+      ...(bookingId ? { bookingId } : {}), stage: "Pre-booking", inspectionDate: String(form.get("inspectionDate")),
       odometerKm: Number(form.get("odometerKm")), fuelPercent: Number(form.get("fuelPercent")),
       condition: String(form.get("condition")) as PrebookingInspection["condition"],
-      notes: String(form.get("notes")).trim(), photos,
+      notes: String(form.get("notes")).trim(), photos, checklist, signatoryName: signatoryName.trim(), signatureDataUrl: signature, signedAt: new Date().toISOString(),
     });
     setSelectedId(created.id);
     setSaved(true); window.setTimeout(() => setSaved(false), 3500); resetForm();
@@ -142,6 +148,8 @@ export function InspectionWorkspace() {
         {selected && <section className="inspection-detail panel"><div className="panel-heading"><div><p className="eyebrow">INSPECTION DETAIL</p><h2>{customers.find((item) => item.id === selected.customerId)?.name ?? "Customer"}</h2></div><span className="status-pill status-confirmed">{selected.condition}</span></div>
           <div className="inspection-linked-records"><div><span>CUSTOMER</span><strong>{customers.find((item) => item.id === selected.customerId)?.name ?? "Customer unavailable"}</strong><small>{customers.find((item) => item.id === selected.customerId)?.phone ?? ""}</small></div><div><span>VEHICLE</span><strong>{vehicles.find((item) => item.id === selected.vehicleId)?.registration ?? "Vehicle unavailable"}</strong><small>{(() => { const v = vehicles.find((item) => item.id === selected.vehicleId); return v ? `${v.make} ${v.model}` : ""; })()}</small></div></div>
           <div className="inspection-facts"><span><small>INSPECTION DATE</small><strong>{formatInspectionDate(selected.inspectionDate)}</strong></span><span><small>ODOMETER</small><strong>{selected.odometerKm.toLocaleString()} km</strong></span><span><small>FUEL</small><strong>{selected.fuelPercent}%</strong></span></div>
+          {selected.checklist && <div className="inspection-saved-checklist"><span>VEHICLE CHECKLIST</span>{inspectionChecklistItems.map((entry) => <div key={entry.key}><span>{entry.label}</span><strong>{selected.checklist?.[entry.key] === "ok" ? "OK" : selected.checklist?.[entry.key] === "attention" ? "Issue" : "N/A"}</strong></div>)}</div>}
+          {selected.signatureDataUrl && <div className="inspection-saved-signature"><span>SIGNED BY {selected.signatoryName || "CLIENT"}</span><img src={selected.signatureDataUrl} alt={`Signature from ${selected.signatoryName || "client"}`} /></div>}
           <div className="inspection-notes"><span>CONDITION NOTES</span><p>{selected.notes || "No additional notes."}</p></div>
           {selected.bookingId && <p className="inspection-booking-link">Linked booking: {bookings.find((booking) => booking.id === selected.bookingId)?.reference ?? "Booking"}</p>}
           <PhotoGrid photos={selected.photos} />
@@ -150,7 +158,7 @@ export function InspectionWorkspace() {
     </main>
     {open && <WorkspaceDialog title="New vehicle inspection" eyebrow="PRE-BOOKING CHECK" className="inspection-modal" onClose={resetForm}>
       <form className="form-grid" onSubmit={save}>
-        <label className="form-field form-field-wide"><span>Customer</span><select name="customerId" required value={customerId} onChange={(event) => { setCustomerId(event.target.value); setBookingId(""); }}><option value="" disabled>Select renter</option>{customers.map((customer) => <option key={customer.id} value={customer.id}>{customer.name} · {customer.phone}</option>)}</select></label>
+        <label className="form-field form-field-wide"><span>Customer</span><select name="customerId" required value={customerId} onChange={(event) => { const selectedCustomerId = event.target.value; setCustomerId(selectedCustomerId); setSignatoryName(customers.find((customer) => customer.id === selectedCustomerId)?.name ?? ""); setBookingId(""); }}><option value="" disabled>Select renter</option>{customers.map((customer) => <option key={customer.id} value={customer.id}>{customer.name} · {customer.phone}</option>)}</select></label>
         <label className="form-field form-field-wide"><span>Vehicle</span><select name="vehicleId" required value={vehicleId} onChange={(event) => { setVehicleId(event.target.value); setBookingId(""); }}><option value="" disabled>Select vehicle</option>{vehicles.map((vehicle) => <option key={vehicle.id} value={vehicle.id}>{vehicle.registration} · {vehicle.make} {vehicle.model}</option>)}</select></label>
         <label className="form-field form-field-wide"><span>Related booking <small>(optional)</small></span><select value={bookingId} onChange={(event) => setBookingId(event.target.value)} disabled={!matchingBookings.length}><option value="">No booking yet</option>{matchingBookings.map((booking) => <option key={booking.id} value={booking.id}>{booking.reference} · {formatInspectionDate(booking.startDate)}</option>)}</select><input type="hidden" name="bookingId" value={bookingId} /></label>
         <label className="form-field"><span>Inspection date</span><input name="inspectionDate" type="date" defaultValue={localDateValue()} required /></label>
@@ -158,6 +166,8 @@ export function InspectionWorkspace() {
         <label className="form-field"><span>Fuel level</span><select name="fuelPercent" defaultValue="100"><option value="100">Full · 100%</option><option value="75">¾ tank · 75%</option><option value="50">½ tank · 50%</option><option value="25">¼ tank · 25%</option><option value="0">Empty · 0%</option></select></label>
         <label className="form-field"><span>Overall condition</span><select name="condition" defaultValue="Good"><option>Good</option><option>Fair</option><option>Needs attention</option></select></label>
         <label className="form-field form-field-wide"><span>Condition notes</span><textarea name="notes" rows={3} placeholder="Describe existing damage, cleanliness, or other notes." /></label>
+        <InspectionChecklistFields value={checklist} onChange={setChecklist} />
+        <ClientSignature name={signatoryName} onNameChange={setSignatoryName} signature={signature} onSignatureChange={setSignature} initialName={customers.find((customer) => customer.id === customerId)?.name ?? ""} />
         <div className="form-field form-field-wide"><span>Vehicle photos <small>(required · up to {PHOTO_LIMIT}, compressed for storage)</small></span><label className="inspection-upload"><input type="file" accept="image/*" capture="environment" multiple onChange={(event) => void addPhotos(event)} disabled={busy || photos.length >= PHOTO_LIMIT} /><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 8a2 2 0 0 1 2-2h2l1.5-2h5L16 6h2a2 2 0 0 1 2 2v10H4z"/><circle cx="12" cy="12" r="3"/></svg><strong>{busy ? "Preparing photos…" : "Take photos or choose from device"}</strong><small>JPEG images are resized and limited to about 500 KB each.</small></label>
           {photos.length > 0 && <div className="inspection-upload-previews">{photos.map((photo) => <div className="inspection-upload-preview" key={photo.id}><img src={photo.dataUrl} alt={photo.name} /><button type="button" onClick={() => setPhotos((current) => current.filter((item) => item.id !== photo.id))} aria-label={`Remove ${photo.name}`}>×</button></div>)}</div>}
           {photoError && <p className="form-error" role="alert">{photoError}</p>}

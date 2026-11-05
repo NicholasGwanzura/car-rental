@@ -54,7 +54,7 @@ export function OverviewWorkspace() {
           </article>
           <article className="panel quick-panel"><div className="panel-heading"><div><p className="eyebrow">SHORTCUTS</p><h2>Quick actions</h2></div></div><div className="quick-list">{quickLinks.map((item) => <Link className="quick-action" key={item.title} href={item.href}><span className="quick-icon" aria-hidden="true"><NavIcon name={item.icon} /></span><span className="quick-copy"><strong>{item.title}</strong><small>{item.detail}</small></span><span className="quick-arrow" aria-hidden="true">↗</span></Link>)}</div><Link className="reports-shortcut" href="/reports"><span><strong>View reports</strong><small>Track rental performance</small></span><span aria-hidden="true">→</span></Link></article>
         </section>
-        <footer className="page-footer"><span>SPIRITUS RENTAL</span><span>Built for the way you move.</span><a href="mailto:support@spiritusglobal.tech">Help & support ↗</a></footer>
+        <footer className="page-footer"><span>CLASSIC RIDES</span><span>Built for the way you move.</span><a href="mailto:sales@classicrides.online">Contact ↗</a></footer>
       </>}
     </main>
   </AppShell>;

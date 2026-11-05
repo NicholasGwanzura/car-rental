@@ -12,13 +12,27 @@ function printableDate(value: string) {
 export function BillingWorkspace() {
   const { bookings, customers, vehicles, company, updateBooking, ready } = useRentalData();
   const [selectedId, setSelectedId] = useState("");
+  const [emailState, setEmailState] = useState("");
+  const [sendingEmail, setSendingEmail] = useState(false);
   const sorted = useMemo(() => [...bookings].sort((a, b) => b.createdAt.localeCompare(a.createdAt)), [bookings]);
   const selected = sorted.find((booking) => booking.id === selectedId) ?? sorted[0];
   const customer = selected && customers.find((item) => item.id === selected.customerId);
   const vehicle = selected && vehicles.find((item) => item.id === selected.vehicleId);
   const billableBookings = bookings.filter((booking) => booking.status !== "Cancelled");
-  const paidTotal = billableBookings.filter((booking) => booking.paymentStatus === "Paid").reduce((sum, booking) => sum + booking.total, 0);
-  const dueTotal = billableBookings.filter((booking) => booking.paymentStatus !== "Paid").reduce((sum, booking) => sum + booking.total, 0);
+  const invoiceTotal = (booking: (typeof bookings)[number]) => booking.total + (booking.excessMileageCharge ?? 0);
+  const paidTotal = billableBookings.filter((booking) => booking.paymentStatus === "Paid").reduce((sum, booking) => sum + invoiceTotal(booking), 0);
+  const dueTotal = billableBookings.filter((booking) => booking.paymentStatus !== "Paid").reduce((sum, booking) => sum + invoiceTotal(booking), 0);
+  async function emailInvoice() {
+    if (!selected) return;
+    setSendingEmail(true); setEmailState("");
+    try {
+      const response = await fetch("/api/invoices/send", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ bookingId: selected.id }) });
+      const result = await response.json();
+      if (!response.ok) throw new Error(result.error ?? "Could not send the invoice.");
+      setEmailState(`Invoice sent to ${customer?.email}.`);
+    } catch (reason) { setEmailState(reason instanceof Error ? reason.message : "Could not send the invoice."); }
+    finally { setSendingEmail(false); }
+  }
   if (!ready) return <div className="loading-state"><span className="loading-spinner" />Loading workspace…</div>;
   return <AppShell active="Billing">
     <PageTopbar title="Billing" />
@@ -38,20 +52,20 @@ export function BillingWorkspace() {
             return <article className={`invoice-list-row${selected?.id === booking.id ? " is-selected" : ""}`} key={booking.id}>
               <button type="button" className="invoice-select" onClick={() => setSelectedId(booking.id)} aria-pressed={selected?.id === booking.id}>
                 <span className="invoice-list-main"><strong>{booking.reference}</strong><small>{renter?.name ?? "Customer"} · {printableDate(booking.startDate)}</small></span>
-                <span className="invoice-list-side"><strong>{formatMoney(booking.total)}</strong><span className={`status-pill ${isCancelled ? "status-cancelled" : isPaid ? "status-available" : "status-active"}`}>{isCancelled ? "Cancelled" : isPaid ? "Paid" : "Due"}</span></span>
+                <span className="invoice-list-side"><strong>{formatMoney(invoiceTotal(booking))}</strong><span className={`status-pill ${isCancelled ? "status-cancelled" : isPaid ? "status-available" : "status-active"}`}>{isCancelled ? "Cancelled" : isPaid ? "Paid" : "Due"}</span></span>
               </button>
               {isCancelled ? <span className="cancelled-payment-note">Excluded from payment totals</span> : <button className="payment-toggle" type="button" onClick={() => updateBooking(booking.id, { paymentStatus: isPaid ? "Unpaid" : "Paid" })}>{isPaid ? "Mark unpaid" : "Mark paid"}</button>}
             </article>;
           })}</div>
         </section>
         {selected && <section className="invoice-preview-panel">
-          <div className="invoice-toolbar"><div><strong>Invoice preview</strong><small>Use Print to save a PDF copy.</small></div><button type="button" className="button button-primary" onClick={() => window.print()}><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M7 8V4h10v4M7 17H5a2 2 0 0 1-2-2v-4a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2v4a2 2 0 0 1-2 2h-2M7 14h10v6H7z"/><path d="M17 11h.01"/></svg>Save invoice as PDF</button></div>
+          <div className="invoice-toolbar"><div><strong>Invoice preview</strong><small>Print a PDF or email the invoice.</small>{emailState && <small className="invoice-email-state" role="status">{emailState}</small>}</div><div className="invoice-toolbar-actions"><button type="button" className="button button-quiet" onClick={() => void emailInvoice()} disabled={sendingEmail || !customer?.email}>{sendingEmail ? "Sending…" : "Email invoice"}</button><button type="button" className="button button-primary" onClick={() => window.print()}><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M7 8V4h10v4M7 17H5a2 2 0 0 1-2-2v-4a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2v4a2 2 0 0 1-2 2h-2M7 14h10v6H7z"/><path d="M17 11h.01"/></svg>Save invoice as PDF</button></div></div>
           <article className="invoice-document">
             <header className="invoice-heading"><div><p className="eyebrow">INVOICE</p><h2>{company.name || "Your rental company"}</h2>{company.address && <p>{company.address}</p>}{(company.email || company.phone) && <p>{[company.email, company.phone].filter(Boolean).join(" · ")}</p>}</div><div className="invoice-number"><span>INVOICE</span><strong>{company.invoicePrefix || "INV"}-{selected.reference.replace(/^BK-/, "")}</strong><small>Issued {printableDate(selected.createdAt)}</small></div></header>
             <div className="invoice-rule" />
             <section className="invoice-parties"><div><span>BILL TO</span><strong>{customer?.name ?? "Customer"}</strong><small>{customer?.email || ""}</small><small>{customer?.phone || ""}</small></div><div><span>RENTAL DETAILS</span><strong>{vehicle ? `${vehicle.make} ${vehicle.model}` : "Rental vehicle"}</strong><small>{vehicle?.registration || ""}</small><small>{printableDate(selected.startDate)} — {printableDate(selected.endDate)}</small></div></section>
-            <table className="invoice-lines"><thead><tr><th>Description</th><th>Amount</th></tr></thead><tbody><tr><td>{selected.status === "Cancelled" ? "Cancelled rental" : "Vehicle rental"} {selected.note ? `· ${selected.note}` : ""}</td><td>{formatMoney(selected.total)}</td></tr></tbody></table>
-            <div className="invoice-total"><span>{selected.status === "Cancelled" ? "Cancelled rental" : selected.paymentStatus === "Paid" ? "Amount paid" : "Total due"}</span><strong>{formatMoney(selected.total)}</strong></div>
+            <table className="invoice-lines"><thead><tr><th>Description</th><th>Amount</th></tr></thead><tbody><tr><td>{selected.status === "Cancelled" ? "Cancelled rental" : "Vehicle rental"} {selected.note ? `· ${selected.note}` : ""}</td><td>{formatMoney(selected.total)}</td></tr>{(selected.excessMileageCharge ?? 0) > 0 && <tr><td>Excess mileage · {selected.distanceKm?.toLocaleString()} km travelled, {selected.includedMileageKm?.toLocaleString()} km included, {selected.excessMileageKm?.toLocaleString()} km charged at {formatMoney(selected.excessMileageRatePerKm ?? 0)}/km</td><td>{formatMoney(selected.excessMileageCharge ?? 0)}</td></tr>}</tbody></table>
+            <div className="invoice-total"><span>{selected.status === "Cancelled" ? "Cancelled rental" : selected.paymentStatus === "Paid" ? "Amount paid" : "Total due"}</span><strong>{formatMoney(invoiceTotal(selected))}</strong></div>
             <div className="invoice-payment"><span className={`status-pill ${selected.status === "Cancelled" ? "status-cancelled" : selected.paymentStatus === "Paid" ? "status-available" : "status-active"}`}>{selected.status === "Cancelled" ? "Cancelled · excluded from balances" : selected.paymentStatus === "Paid" ? "Paid" : "Payment due"}</span>{selected.status !== "Cancelled" && selected.paymentStatus !== "Paid" && company.paymentInstructions && <p><strong>Payment instructions</strong><br />{company.paymentInstructions}</p>}</div>
             <footer className="invoice-footer">Thank you for choosing {company.name || "our rental company"}.</footer>
           </article>

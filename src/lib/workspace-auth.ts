@@ -1,42 +1,32 @@
-import { createHmac, timingSafeEqual } from "node:crypto";
 import { cookies } from "next/headers";
+import { getWorkspaceUserForSession, type WorkspaceRole, type WorkspaceUserSummary } from "@/lib/workspace-db";
 
-export const WORKSPACE_COOKIE = "spiritus_workspace_session";
+export const WORKSPACE_COOKIE = "classic_rides_session";
 const SESSION_TTL_SECONDS = 60 * 60 * 24 * 7;
 
-function configuredPassword() {
-  return process.env.WORKSPACE_PASSWORD;
-}
-
-function sign(value: string, password: string) {
-  return createHmac("sha256", password).update(value).digest("base64url");
-}
-
-export function passwordMatches(candidate: unknown) {
-  const password = configuredPassword();
-  if (!password || typeof candidate !== "string") return false;
-  const expected = Buffer.from(password);
-  const actual = Buffer.from(candidate);
-  return expected.length === actual.length && timingSafeEqual(expected, actual);
-}
-
-export function createWorkspaceToken() {
-  const password = configuredPassword();
-  if (!password) throw new Error("WORKSPACE_PASSWORD is not configured");
-  const expiresAt = String(Math.floor(Date.now() / 1000) + SESSION_TTL_SECONDS);
-  return `${expiresAt}.${sign(expiresAt, password)}`;
+export async function getWorkspaceSession(): Promise<WorkspaceUserSummary | null> {
+  const token = (await cookies()).get(WORKSPACE_COOKIE)?.value;
+  if (!token || !process.env.DATABASE_URL) return null;
+  try { return await getWorkspaceUserForSession(token); }
+  catch { return null; }
 }
 
 export async function hasWorkspaceSession() {
-  const password = configuredPassword();
-  if (!password) return false;
-  const token = (await cookies()).get(WORKSPACE_COOKIE)?.value;
-  if (!token) return false;
-  const [expiresAt, signature, extra] = token.split(".");
-  if (!expiresAt || !signature || extra || Number(expiresAt) <= Math.floor(Date.now() / 1000)) return false;
-  const expected = Buffer.from(sign(expiresAt, password));
-  const actual = Buffer.from(signature);
-  return expected.length === actual.length && timingSafeEqual(expected, actual);
+  return Boolean(await getWorkspaceSession());
+}
+
+export function canAccessModule(role: WorkspaceRole, module: string) {
+  if (role === "super_admin") return true;
+  if (role === "manager") return module !== "settings";
+  return ["workspace", "bookings", "fleet", "customers", "inspections", "billing"].includes(module);
+}
+
+export function canManageTeam(role: WorkspaceRole) {
+  return role === "super_admin" || role === "manager";
+}
+
+export function canInviteRole(role: WorkspaceRole, invitedRole: string) {
+  return role === "super_admin" ? invitedRole === "manager" || invitedRole === "sales" : role === "manager" && invitedRole === "sales";
 }
 
 export const workspaceCookieOptions = {
