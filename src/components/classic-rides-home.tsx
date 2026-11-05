@@ -24,7 +24,10 @@ export function ClassicRidesHome() {
     <header className="site-header">
       <a className="site-brand" href="#home" aria-label="Classic Rides home"><span className="site-brand-mark"><CarMark /></span><span><strong>CLASSIC RIDES</strong><small>CAR RENTAL</small></span></a>
       <nav className="site-nav" aria-label="Main navigation"><a href="#services">Services</a><a href="#fleet">Fleet</a><a href="#contact">Contact</a></nav>
-      <a className="site-header-cta" href="mailto:sales@classicrides.online?subject=Car%20rental%20enquiry">Book a ride <span aria-hidden="true">↗</span></a>
+      <div className="site-header-actions">
+        <a className="site-admin-link" href="/workspace">Admin</a>
+        <a className="site-header-cta" href="mailto:sales@classicrides.online?subject=Car%20rental%20enquiry">Book a ride <span aria-hidden="true">↗</span></a>
+      </div>
     </header>
 
     <section className="site-hero" id="home">
