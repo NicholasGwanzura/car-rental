@@ -7,6 +7,7 @@ import { useEffect, useState, type FormEvent } from "react";
 type PublicVehicle = { id: string; make: string; model: string; year: number; vehicleType: string; dailyRate: number; depositAmount: number; mileageAllowanceKmPerDay: number; excessMileageRatePerKm: number; transmission: string };
 function money(value: number) { return new Intl.NumberFormat("en-US", { style: "currency", currency: "USD", maximumFractionDigits: 2 }).format(value); }
 function localDate(offset = 0) { const date = new Date(); date.setDate(date.getDate() + offset); return new Date(date.getTime() - date.getTimezoneOffset() * 60_000).toISOString().slice(0, 10); }
+function nextDate(value: string) { if (!value) return localDate(1); const date = new Date(`${value}T12:00:00`); date.setDate(date.getDate() + 1); return new Date(date.getTime() - date.getTimezoneOffset() * 60_000).toISOString().slice(0, 10); }
 
 export function PublicVehiclePage({ vehicleId }: { vehicleId: string }) {
   const [vehicle, setVehicle] = useState<PublicVehicle | null>(null);
@@ -50,7 +51,7 @@ export function PublicVehiclePage({ vehicleId }: { vehicleId: string }) {
           <label>Phone<input name="phone" type="tel" autoComplete="tel" required placeholder="+263…" /></label>
           <label>Driver licence number<input name="driverLicence" required placeholder="Licence number" /></label>
           <label>Pickup date<input name="startDate" type="date" min={localDate()} value={pickup} onChange={(event) => { setPickup(event.target.value); if (returned <= event.target.value) setReturned(event.target.value ? new Date(new Date(`${event.target.value}T12:00:00`).getTime() + 86400000).toISOString().slice(0, 10) : ""); }} required /></label>
-          <label>Return date<input name="endDate" type="date" min={pickup || localDate(1)} value={returned} onChange={(event) => setReturned(event.target.value)} required /></label>
+          <label>Return date<input name="endDate" type="date" min={nextDate(pickup)} value={returned} onChange={(event) => setReturned(event.target.value)} required /></label>
           <label className="public-form-wide">Anything we should know? <textarea name="message" rows={3} placeholder="Pickup location or questions (optional)" /></label>
           {days > 0 && <div className="public-estimate"><span>Estimated rental · {days} {days === 1 ? "day" : "days"}</span><strong>{money(days * vehicle.dailyRate)}</strong></div>}
           {error && <p className="public-form-error" role="alert">{error}</p>}
@@ -60,6 +61,6 @@ export function PublicVehiclePage({ vehicleId }: { vehicleId: string }) {
         </form>
       </section>
     </>}
-    <footer className="public-rental-footer"><span>CLASSIC RIDES · CAR RENTAL</span><a href="tel:+263772313286">+263 772 313 286</a><a href="tel:+263777879154">+263 777 879 154</a><a href="tel:+447449975828">+44 7449 975828</a></footer>
+    <footer className="public-rental-footer"><span>CLASSIC RIDES · CAR RENTAL</span><a href="tel:+263772313286">+263 772 313 286</a><a href="tel:+263777879154">+263 777 879 154</a></footer>
   </main>;
 }

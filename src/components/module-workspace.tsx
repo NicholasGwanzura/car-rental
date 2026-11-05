@@ -62,18 +62,22 @@ function EmptyState({ icon = "＋", title, detail, action }: { icon?: string; ti
 function TableFrame({ children }: { children: ReactNode }) { return <div className="data-table-wrap"><table className="data-table">{children}</table></div>; }
 
 function FleetWorkspace() {
-  const { vehicles, bookings, addVehicle, ready } = useRentalData();
+  const { vehicles, bookings, addVehicle, updateVehicle, ready } = useRentalData();
   const [open, setOpen] = useState(false);
+  const [editingVehicle, setEditingVehicle] = useState<Vehicle | null>(null);
   const [query, setQuery] = useState("");
-  const [saved, setSaved] = useState(false);
+  const [savedMessage, setSavedMessage] = useState("");
   const [copiedId, setCopiedId] = useState("");
   const filtered = vehicles.filter((vehicle) => `${vehicle.registration} ${vehicle.make} ${vehicle.model}`.toLowerCase().includes(query.toLowerCase()));
   function save(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     const form = new FormData(event.currentTarget);
-    addVehicle({ registration: String(form.get("registration")).trim().toUpperCase(), make: String(form.get("make")).trim(), model: String(form.get("model")).trim(), year: Number(form.get("year")), dailyRate: Number(form.get("dailyRate")), vehicleType: String(form.get("vehicleType")) as Vehicle["vehicleType"], depositAmount: Number(form.get("depositAmount")), mileageAllowanceKmPerDay: Number(form.get("mileageAllowanceKmPerDay")), excessMileageRatePerKm: Number(form.get("excessMileageRatePerKm")), transmission: String(form.get("transmission")), status: "Available" });
-    setOpen(false); setSaved(true); window.setTimeout(() => setSaved(false), 3000);
+    const changes = { registration: String(form.get("registration")).trim().toUpperCase(), make: String(form.get("make")).trim(), model: String(form.get("model")).trim(), year: Number(form.get("year")), dailyRate: Number(form.get("dailyRate")), vehicleType: String(form.get("vehicleType")) as Vehicle["vehicleType"], depositAmount: Number(form.get("depositAmount")), mileageAllowanceKmPerDay: Number(form.get("mileageAllowanceKmPerDay")), excessMileageRatePerKm: Number(form.get("excessMileageRatePerKm")), transmission: String(form.get("transmission")), status: String(form.get("status")) as Vehicle["status"] };
+    if (editingVehicle) updateVehicle(editingVehicle.id, changes);
+    else addVehicle(changes);
+    setOpen(false); setEditingVehicle(null); setSavedMessage(editingVehicle ? "Vehicle details updated." : "Vehicle added to your fleet."); window.setTimeout(() => setSavedMessage(""), 3000);
   }
+  function closeVehicleDialog() { setOpen(false); setEditingVehicle(null); }
   async function copyShareLink(vehicleId: string) {
     const url = `https://classicrides.online/rent/${encodeURIComponent(vehicleId)}`;
     try { await navigator.clipboard.writeText(url); setCopiedId(vehicleId); window.setTimeout(() => setCopiedId(""), 2500); }
@@ -81,25 +85,27 @@ function FleetWorkspace() {
   }
   if (!ready) return <LoadingState />;
   return <>
-    {saved && <div className="inline-notice" role="status">Vehicle added to your fleet.</div>}
+    {savedMessage && <div className="inline-notice" role="status">{savedMessage}</div>}
     <div className="list-toolbar"><label className="search-box"><span aria-hidden="true">⌕</span><input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Search registration or model" aria-label="Search fleet" /></label><span className="result-count">{vehicles.length} {vehicles.length === 1 ? "vehicle" : "vehicles"}</span></div>
-    {vehicles.length === 0 ? <EmptyState icon="▰" title="Your fleet starts here" detail="Add a vehicle to set its type, day rate, and required deposit." action={<button className="button button-primary" onClick={() => setOpen(true)}>＋ Add your first vehicle</button>} /> : filtered.length === 0 ? <EmptyState icon="⌕" title="No matches" detail="Try a different registration, make, or model." /> : <TableFrame><thead><tr><th>VEHICLE</th><th>TYPE</th><th>REGISTRATION</th><th>DAY RATE</th><th>DEPOSIT</th><th>EXCESS RATE</th><th>STATUS</th><th>BOOKINGS</th><th>SHARE</th></tr></thead><tbody>{filtered.map((vehicle) => {
+    {vehicles.length === 0 ? <EmptyState icon="▰" title="Your fleet starts here" detail="Add a vehicle to set its type, day rate, and required deposit." action={<button className="button button-primary" onClick={() => { setEditingVehicle(null); setOpen(true); }}>＋ Add your first vehicle</button>} /> : filtered.length === 0 ? <EmptyState icon="⌕" title="No matches" detail="Try a different registration, make, or model." /> : <TableFrame><thead><tr><th>VEHICLE</th><th>TYPE</th><th>REGISTRATION</th><th>DAY RATE</th><th>DEPOSIT</th><th>EXCESS RATE</th><th>STATUS</th><th>BOOKINGS</th><th>ACTIONS</th></tr></thead><tbody>{filtered.map((vehicle) => {
       const activeBookings = bookings.filter((booking) => booking.vehicleId === vehicle.id && ["Confirmed", "Active"].includes(booking.status)).length;
-      return <tr key={vehicle.id}><td data-label="Vehicle"><div className="table-primary">{vehicle.make} {vehicle.model}</div><div className="table-secondary">{vehicle.year} · {vehicle.transmission} · {vehicle.mileageAllowanceKmPerDay} km/day</div></td><td data-label="Type">{vehicle.vehicleType}</td><td data-label="Registration"><span className="registration-tag">{vehicle.registration}</span></td><td data-label="Day rate">{formatMoney(vehicle.dailyRate)} <span className="table-secondary">/ day</span></td><td data-label="Deposit">{vehicle.depositAmount > 0 ? formatMoney(vehicle.depositAmount) : <span className="table-secondary">Not set</span>}</td><td data-label="Excess rate">{formatMoney(vehicle.excessMileageRatePerKm)} / km</td><td data-label="Status"><span className={`status-pill status-${slug(vehicle.status)}`}>{vehicle.status}</span></td><td data-label="Bookings">{activeBookings}</td><td data-label="Share"><button className="text-action" type="button" onClick={() => void copyShareLink(vehicle.id)}>{copiedId === vehicle.id ? "Link copied" : "Copy pre-book link"}</button></td></tr>;
+      return <tr key={vehicle.id}><td data-label="Vehicle"><div className="table-primary">{vehicle.make} {vehicle.model}</div><div className="table-secondary">{vehicle.year} · {vehicle.transmission} · {vehicle.mileageAllowanceKmPerDay} km/day</div></td><td data-label="Type">{vehicle.vehicleType}</td><td data-label="Registration"><span className="registration-tag">{vehicle.registration}</span></td><td data-label="Day rate">{formatMoney(vehicle.dailyRate)} <span className="table-secondary">/ day</span></td><td data-label="Deposit">{vehicle.depositAmount > 0 ? formatMoney(vehicle.depositAmount) : <span className="table-secondary">Not set</span>}</td><td data-label="Excess rate">{formatMoney(vehicle.excessMileageRatePerKm)} / km</td><td data-label="Status"><span className={`status-pill status-${slug(vehicle.status)}`}>{vehicle.status}</span></td><td data-label="Bookings">{activeBookings}</td><td data-label="Actions"><div className="row-actions"><button className="text-action" type="button" onClick={() => { setEditingVehicle(vehicle); setOpen(true); }}>Edit</button><button className="text-action" type="button" onClick={() => void copyShareLink(vehicle.id)}>{copiedId === vehicle.id ? "Link copied" : "Copy pre-book link"}</button></div></td></tr>;
     })}</tbody></TableFrame>}
-    {open && <Modal title="Add a vehicle" onClose={() => setOpen(false)}><form className="form-grid" onSubmit={save}>
-      <Field label="Registration"><input name="registration" placeholder="e.g. AAZ 1234" required maxLength={16} /></Field>
-      <Field label="Make"><input name="make" placeholder="Toyota" required /></Field>
-      <Field label="Model"><input name="model" placeholder="Corolla Cross" required /></Field>
-      <Field label="Year"><input name="year" type="number" min="1980" max="2035" defaultValue={new Date().getFullYear()} required /></Field>
-      <Field label="Vehicle type"><select name="vehicleType" defaultValue="Budget" required><option>Budget</option><option>Premium</option><option>SUV</option></select></Field>
-      <Field label="Transmission"><select name="transmission" defaultValue="Automatic"><option>Automatic</option><option>Manual</option></select></Field>
-      <Field label="Day rate (USD)"><input name="dailyRate" type="number" min="1" step="1" placeholder="65" required /></Field>
-      <Field label="Refundable deposit (USD)"><input name="depositAmount" type="number" min="1" step="1" placeholder="e.g. 100" required /></Field>
-      <Field label="Included mileage (km per day)"><input name="mileageAllowanceKmPerDay" type="number" min="0" step="1" placeholder="e.g. 200" required /></Field>
-      <Field label="Excess mileage (USD per km)"><input name="excessMileageRatePerKm" type="number" min="0.01" step="0.01" placeholder="e.g. 0.25" required /></Field>
-      <p className="form-hint form-field-wide">Type, deposit, mileage allowance, and excess rate will be copied to each new booking.</p>
-      <div className="form-field-wide"><DialogActions onCancel={() => setOpen(false)} submit="Add vehicle" /></div>
+    <PublicPrebookingInbox vehicles={vehicles} />
+    {open && <Modal title={editingVehicle ? "Edit vehicle" : "Add a vehicle"} onClose={closeVehicleDialog}><form className="form-grid" onSubmit={save}>
+      <Field label="Registration"><input name="registration" placeholder="e.g. AAZ 1234" defaultValue={editingVehicle?.registration ?? ""} required maxLength={16} /></Field>
+      <Field label="Make"><input name="make" placeholder="Toyota" defaultValue={editingVehicle?.make ?? ""} required /></Field>
+      <Field label="Model"><input name="model" placeholder="Corolla Cross" defaultValue={editingVehicle?.model ?? ""} required /></Field>
+      <Field label="Year"><input name="year" type="number" min="1980" max="2035" defaultValue={editingVehicle?.year ?? new Date().getFullYear()} required /></Field>
+      <Field label="Vehicle type"><select name="vehicleType" defaultValue={editingVehicle?.vehicleType ?? "Budget"} required><option>Budget</option><option>Premium</option><option>SUV</option></select></Field>
+      <Field label="Transmission"><select name="transmission" defaultValue={editingVehicle?.transmission ?? "Automatic"}><option>Automatic</option><option>Manual</option></select></Field>
+      <Field label="Day rate (USD)"><input name="dailyRate" type="number" min="1" step="1" placeholder="65" defaultValue={editingVehicle?.dailyRate ?? ""} required /></Field>
+      <Field label="Refundable deposit (USD)"><input name="depositAmount" type="number" min="0" step="1" placeholder="e.g. 100" defaultValue={editingVehicle?.depositAmount ?? ""} required /></Field>
+      <Field label="Included mileage (km per day)"><input name="mileageAllowanceKmPerDay" type="number" min="0" step="1" placeholder="e.g. 200" defaultValue={editingVehicle?.mileageAllowanceKmPerDay ?? 0} required /></Field>
+      <Field label="Excess mileage (USD per km)"><input name="excessMileageRatePerKm" type="number" min="0" step="0.01" placeholder="e.g. 0.25" defaultValue={editingVehicle?.excessMileageRatePerKm ?? 0} required /></Field>
+      <Field label="Fleet status"><select name="status" defaultValue={editingVehicle?.status ?? "Available"}><option>Available</option><option>Unavailable</option></select></Field>
+      <p className="form-hint form-field-wide">Type, deposit, mileage allowance, and excess rate are copied to each new booking.</p>
+      <div className="form-field-wide"><DialogActions onCancel={closeVehicleDialog} submit={editingVehicle ? "Save changes" : "Add vehicle"} /></div>
     </form></Modal>}
   </>;
 }
@@ -207,12 +213,22 @@ type PrebookingRequestView = { id: string; vehicleId: string; customerName: stri
 function PublicPrebookingInbox({ vehicles }: { vehicles: Vehicle[] }) {
   const [requests, setRequests] = useState<PrebookingRequestView[]>([]);
   const [error, setError] = useState("");
+  const [loading, setLoading] = useState(true);
   useEffect(() => {
-    fetch("/api/prebooking-requests", { cache: "no-store" }).then(async (response) => {
-      const result = await response.json();
-      if (!response.ok) throw new Error(result.error ?? "Could not load pre-booking requests.");
-      setRequests(result.requests as PrebookingRequestView[]);
-    }).catch((reason: unknown) => setError(reason instanceof Error ? reason.message : "Could not load pre-booking requests."));
+    let active = true;
+    async function loadRequests() {
+      try {
+        const response = await fetch("/api/prebooking-requests", { cache: "no-store" });
+        const result = await response.json();
+        if (!response.ok) throw new Error(result.error ?? "Could not load pre-booking requests.");
+        if (active) { setRequests(result.requests as PrebookingRequestView[]); setError(""); }
+      } catch (reason) {
+        if (active) setError(reason instanceof Error ? reason.message : "Could not load pre-booking requests.");
+      } finally { if (active) setLoading(false); }
+    }
+    void loadRequests();
+    const refresh = window.setInterval(() => void loadRequests(), 15_000);
+    return () => { active = false; window.clearInterval(refresh); };
   }, []);
   async function setStatus(id: string, status: PrebookingRequestView["status"]) {
     setError("");
@@ -225,7 +241,7 @@ function PublicPrebookingInbox({ vehicles }: { vehicles: Vehicle[] }) {
   }
   return <section className="panel public-requests-panel"><div className="panel-heading"><div><p className="eyebrow">CUSTOMER ENQUIRIES</p><h2>Public pre-booking requests</h2></div><span className="result-count">{requests.filter((request) => request.status === "New").length} new</span></div>
     {error && <p className="form-error" role="alert">{error}</p>}
-    {!requests.length && !error ? <p className="public-requests-empty">Vehicle requests submitted through shared links will appear here.</p> : <div className="public-request-list">{requests.map((request) => {
+    {loading ? <p className="public-requests-empty">Loading requests…</p> : !requests.length && !error ? <p className="public-requests-empty">Vehicle requests submitted through shared links will appear here.</p> : <div className="public-request-list">{requests.map((request) => {
       const vehicle = vehicles.find((item) => item.id === request.vehicleId);
       return <article className="public-request-card" key={request.id}><div className="public-request-heading"><div><strong>{request.customerName}</strong><small>{vehicle ? `${vehicle.year} ${vehicle.make} ${vehicle.model}` : "Vehicle"} · {dateLabel(request.startDate)} to {dateLabel(request.endDate)}</small></div><span className={`status-pill status-${slug(request.status)}`}>{request.status}</span></div><div className="public-request-contact"><a href={`mailto:${encodeURIComponent(request.email)}`}>{request.email}</a><a href={`tel:${request.phone.replaceAll(" ", "")}`}>{request.phone}</a><span>Licence: {request.driverLicence}</span></div>{request.message && <p>{request.message}</p>}<div className="public-request-actions"><a className="text-action" href={`https://classicrides.online/rent/${encodeURIComponent(request.vehicleId)}`} target="_blank" rel="noreferrer">Open shared listing</a><select aria-label={`Update status for ${request.customerName}`} value={request.status} onChange={(event) => void setStatus(request.id, event.target.value as PrebookingRequestView["status"])}><option>New</option><option>Contacted</option><option>Accepted</option><option>Declined</option></select></div></article>;
     })}</div>}

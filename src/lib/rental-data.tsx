@@ -117,8 +117,11 @@ type RentalContextValue = StoreData & {
 };
 
 const STORAGE_KEY = "spiritus-rental-workspace-v1";
-const defaultCompany: CompanyProfile = { name: "Classic Rides", email: "sales@classicrides.online", phone: "+263 772 313 286 · +263 777 879 154 · +44 7449 975828", address: "", invoicePrefix: "CR", paymentInstructions: "" };
+const defaultCompany: CompanyProfile = { name: "Classic Rides", email: "sales@classicrides.online", phone: "+263 772 313 286 · +263 777 879 154", address: "", invoicePrefix: "CR", paymentInstructions: "" };
 const emptyData: StoreData = { vehicles: [], customers: [], bookings: [], maintenance: [], inspections: [], company: defaultCompany };
+function removeUkContacts(phone: string) {
+  return phone.split(/[·,;|\n]+/).map((item) => item.trim()).filter((item) => item && !/^(?:\+?44|0044)(?=\s|\d|$)/.test(item)).join(" · ");
+}
 function normalizeData(input: Partial<StoreData>): StoreData {
   const data = { ...emptyData, ...input };
   return {
@@ -127,6 +130,7 @@ function normalizeData(input: Partial<StoreData>): StoreData {
       ...data.company,
       name: !data.company.name || data.company.name === "Your rental company" || data.company.name.toLowerCase().includes("spiritus") ? "Classic Rides" : data.company.name,
       email: !data.company.email || data.company.email.toLowerCase().includes("spiritus") ? "sales@classicrides.online" : data.company.email,
+      phone: removeUkContacts(data.company.phone || defaultCompany.phone),
       invoicePrefix: !data.company.invoicePrefix || data.company.invoicePrefix === "INV" ? "CR" : data.company.invoicePrefix,
     },
     vehicles: data.vehicles.map((vehicle) => ({
@@ -254,8 +258,14 @@ export function RentalDataProvider({ children }: { children: ReactNode }) {
           const result = await response.json();
           if (mounted) {
             const loaded = normalizeData(result.data);
+            const storedPhone = typeof result.data?.company?.phone === "string" ? result.data.company.phone : loaded.company.phone;
             dataRef.current = loaded;
             setData(loaded); setCurrentUser(result.user as WorkspaceUser ?? null); setDatabaseConnected(true); setReady(true);
+            if (storedPhone !== loaded.company.phone) {
+              void fetch("/api/workspace", { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify(loaded) }).then((save) => {
+                if (!save.ok) console.error("Company contact cleanup could not be saved.");
+              }).catch(() => console.error("Company contact cleanup could not be saved."));
+            }
           }
           return;
         }
