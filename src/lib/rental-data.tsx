@@ -16,6 +16,7 @@ export type Vehicle = {
   excessMileageRatePerKm: number;
   transmission: string;
   status: "Available" | "Unavailable";
+  imageDataUrl?: string;
   createdAt: string;
 };
 

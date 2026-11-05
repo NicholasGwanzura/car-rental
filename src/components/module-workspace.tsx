@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import Image from "next/image";
 import { useEffect, useState, type FormEvent, type ReactNode } from "react";
 import { AppShell, PageTopbar } from "@/components/app-shell";
 import { BillingWorkspace } from "@/components/billing-workspace";
@@ -68,14 +69,25 @@ function FleetWorkspace() {
   const [query, setQuery] = useState("");
   const [savedMessage, setSavedMessage] = useState("");
   const [copiedId, setCopiedId] = useState("");
+  const [vehicleError, setVehicleError] = useState("");
+  const [savingVehicle, setSavingVehicle] = useState(false);
   const filtered = vehicles.filter((vehicle) => `${vehicle.registration} ${vehicle.make} ${vehicle.model}`.toLowerCase().includes(query.toLowerCase()));
-  function save(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault();
+  async function save(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault(); setVehicleError(""); setSavingVehicle(true);
     const form = new FormData(event.currentTarget);
-    const changes = { registration: String(form.get("registration")).trim().toUpperCase(), make: String(form.get("make")).trim(), model: String(form.get("model")).trim(), year: Number(form.get("year")), dailyRate: Number(form.get("dailyRate")), vehicleType: String(form.get("vehicleType")) as Vehicle["vehicleType"], depositAmount: Number(form.get("depositAmount")), mileageAllowanceKmPerDay: Number(form.get("mileageAllowanceKmPerDay")), excessMileageRatePerKm: Number(form.get("excessMileageRatePerKm")), transmission: String(form.get("transmission")), status: String(form.get("status")) as Vehicle["status"] };
-    if (editingVehicle) updateVehicle(editingVehicle.id, changes);
-    else addVehicle(changes);
-    setOpen(false); setEditingVehicle(null); setSavedMessage(editingVehicle ? "Vehicle details updated." : "Vehicle added to your fleet."); window.setTimeout(() => setSavedMessage(""), 3000);
+    try {
+      const file = form.get("image");
+      let imageDataUrl = form.get("removeImage") === "on" ? undefined : editingVehicle?.imageDataUrl;
+      if (file instanceof File && file.size) {
+        if (!file.type.startsWith("image/") || file.size > 10 * 1024 * 1024) throw new Error("Choose an image under 10 MB.");
+        imageDataUrl = await compressIdentityImage(file);
+      }
+      const changes = { registration: String(form.get("registration")).trim().toUpperCase(), make: String(form.get("make")).trim(), model: String(form.get("model")).trim(), year: Number(form.get("year")), dailyRate: Number(form.get("dailyRate")), vehicleType: String(form.get("vehicleType")) as Vehicle["vehicleType"], depositAmount: Number(form.get("depositAmount")), mileageAllowanceKmPerDay: Number(form.get("mileageAllowanceKmPerDay")), excessMileageRatePerKm: Number(form.get("excessMileageRatePerKm")), transmission: String(form.get("transmission")), status: String(form.get("status")) as Vehicle["status"], imageDataUrl };
+      if (editingVehicle) updateVehicle(editingVehicle.id, changes);
+      else addVehicle(changes);
+      setOpen(false); setEditingVehicle(null); setSavedMessage(editingVehicle ? "Vehicle details updated." : "Vehicle added to your fleet."); window.setTimeout(() => setSavedMessage(""), 3000);
+    } catch (reason) { setVehicleError(reason instanceof Error ? reason.message : "Could not save the vehicle image."); }
+    finally { setSavingVehicle(false); }
   }
   function closeVehicleDialog() { setOpen(false); setEditingVehicle(null); }
   async function copyShareLink(vehicleId: string) {
@@ -89,7 +101,7 @@ function FleetWorkspace() {
     <div className="list-toolbar"><label className="search-box"><span aria-hidden="true">⌕</span><input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Search registration or model" aria-label="Search fleet" /></label><span className="result-count">{vehicles.length} {vehicles.length === 1 ? "vehicle" : "vehicles"}</span></div>
     {vehicles.length === 0 ? <EmptyState icon="▰" title="Your fleet starts here" detail="Add a vehicle to set its type, day rate, and required deposit." action={<button className="button button-primary" onClick={() => { setEditingVehicle(null); setOpen(true); }}>＋ Add your first vehicle</button>} /> : filtered.length === 0 ? <EmptyState icon="⌕" title="No matches" detail="Try a different registration, make, or model." /> : <TableFrame><thead><tr><th>VEHICLE</th><th>TYPE</th><th>REGISTRATION</th><th>DAY RATE</th><th>DEPOSIT</th><th>EXCESS RATE</th><th>STATUS</th><th>BOOKINGS</th><th>ACTIONS</th></tr></thead><tbody>{filtered.map((vehicle) => {
       const activeBookings = bookings.filter((booking) => booking.vehicleId === vehicle.id && ["Confirmed", "Active"].includes(booking.status)).length;
-      return <tr key={vehicle.id}><td data-label="Vehicle"><div className="table-primary">{vehicle.make} {vehicle.model}</div><div className="table-secondary">{vehicle.year} · {vehicle.transmission} · {vehicle.mileageAllowanceKmPerDay} km/day</div></td><td data-label="Type">{vehicle.vehicleType}</td><td data-label="Registration"><span className="registration-tag">{vehicle.registration}</span></td><td data-label="Day rate">{formatMoney(vehicle.dailyRate)} <span className="table-secondary">/ day</span></td><td data-label="Deposit">{vehicle.depositAmount > 0 ? formatMoney(vehicle.depositAmount) : <span className="table-secondary">Not set</span>}</td><td data-label="Excess rate">{formatMoney(vehicle.excessMileageRatePerKm)} / km</td><td data-label="Status"><span className={`status-pill status-${slug(vehicle.status)}`}>{vehicle.status}</span></td><td data-label="Bookings">{activeBookings}</td><td data-label="Actions"><div className="row-actions"><button className="text-action" type="button" onClick={() => { setEditingVehicle(vehicle); setOpen(true); }}>Edit</button><button className="text-action" type="button" onClick={() => void copyShareLink(vehicle.id)}>{copiedId === vehicle.id ? "Link copied" : "Copy pre-book link"}</button></div></td></tr>;
+      return <tr key={vehicle.id}><td data-label="Vehicle"><div className="fleet-vehicle-identity">{vehicle.imageDataUrl && <Image className="fleet-vehicle-thumb" src={vehicle.imageDataUrl} alt="" width={64} height={48} unoptimized />}<div><div className="table-primary">{vehicle.make} {vehicle.model}</div><div className="table-secondary">{vehicle.year} · {vehicle.transmission} · {vehicle.mileageAllowanceKmPerDay} km/day</div></div></div></td><td data-label="Type">{vehicle.vehicleType}</td><td data-label="Registration"><span className="registration-tag">{vehicle.registration}</span></td><td data-label="Day rate">{formatMoney(vehicle.dailyRate)} <span className="table-secondary">/ day</span></td><td data-label="Deposit">{vehicle.depositAmount > 0 ? formatMoney(vehicle.depositAmount) : <span className="table-secondary">Not set</span>}</td><td data-label="Excess rate">{formatMoney(vehicle.excessMileageRatePerKm)} / km</td><td data-label="Status"><span className={`status-pill status-${slug(vehicle.status)}`}>{vehicle.status}</span></td><td data-label="Bookings">{activeBookings}</td><td data-label="Actions"><div className="row-actions"><button className="text-action" type="button" onClick={() => { setEditingVehicle(vehicle); setOpen(true); }}>Edit</button><button className="text-action" type="button" onClick={() => void copyShareLink(vehicle.id)}>{copiedId === vehicle.id ? "Link copied" : "Copy pre-book link"}</button></div></td></tr>;
     })}</tbody></TableFrame>}
     <PublicPrebookingInbox vehicles={vehicles} />
     {open && <Modal title={editingVehicle ? "Edit vehicle" : "Add a vehicle"} onClose={closeVehicleDialog}><form className="form-grid" onSubmit={save}>
@@ -104,8 +116,11 @@ function FleetWorkspace() {
       <Field label="Included mileage (km per day)"><input name="mileageAllowanceKmPerDay" type="number" min="0" step="1" placeholder="e.g. 200" defaultValue={editingVehicle?.mileageAllowanceKmPerDay ?? 0} required /></Field>
       <Field label="Excess mileage (USD per km)"><input name="excessMileageRatePerKm" type="number" min="0" step="0.01" placeholder="e.g. 0.25" defaultValue={editingVehicle?.excessMileageRatePerKm ?? 0} required /></Field>
       <Field label="Fleet status"><select name="status" defaultValue={editingVehicle?.status ?? "Available"}><option>Available</option><option>Unavailable</option></select></Field>
+      <Field label="Vehicle photo" wide><input name="image" type="file" accept="image/*" capture="environment" /><small>Upload a clear photo. It will appear on the public pre-booking link.</small></Field>
+      {editingVehicle?.imageDataUrl && <div className="form-field-wide fleet-image-current"><Image src={editingVehicle.imageDataUrl} alt={`${editingVehicle.make} ${editingVehicle.model}`} width={120} height={90} unoptimized /><label><input type="checkbox" name="removeImage" /> Remove current photo</label></div>}
       <p className="form-hint form-field-wide">Type, deposit, mileage allowance, and excess rate are copied to each new booking.</p>
-      <div className="form-field-wide"><DialogActions onCancel={closeVehicleDialog} submit={editingVehicle ? "Save changes" : "Add vehicle"} /></div>
+      {vehicleError && <p className="form-error form-field-wide" role="alert">{vehicleError}</p>}
+      <div className="form-field-wide"><div className="form-actions"><button className="button button-quiet" type="button" onClick={closeVehicleDialog}>Cancel</button><button className="button button-primary" type="submit" disabled={savingVehicle}>{savingVehicle ? "Saving…" : editingVehicle ? "Save changes" : "Add vehicle"}</button></div></div>
     </form></Modal>}
   </>;
 }
