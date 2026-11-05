@@ -676,3 +676,34 @@ button:focus-visible,a:focus-visible,select:focus-visible,input:focus-visible,te
   .site-service-card>a{font-size:13px}
   .site-email-card a,.site-phone-card strong{font-size:13px}
 }
+/* Phone layouts keep actions reachable and forms readable without browser zoom. */
+@media(max-width:720px){
+  .module-wrap{padding-right:16px;padding-left:16px}
+  .module-page-heading{gap:12px;flex-wrap:wrap}
+  .module-page-heading .module-summary{max-width:none;font-size:13px;line-height:1.5}
+  .page-action{min-height:44px;height:auto;padding:10px 14px;font-size:13px}
+  .list-toolbar{flex-wrap:wrap}
+  .search-box{min-width:0;flex:1 1 100%;height:44px}
+  .search-box input{font-size:16px}
+  .filter-select{min-width:135px;max-width:none;height:44px;font-size:14px}
+  .data-table tbody td{font-size:13px;overflow-wrap:anywhere}
+  .data-table tbody td::before{font-size:11px}
+  .row-actions .text-action{min-height:44px;font-size:13px}
+  .mobile-nav>.nav-item{min-height:44px}
+}
+@media(max-width:640px){
+  .public-rental-page{overflow-x:hidden}
+  .public-rental-header{gap:12px;padding:14px 16px}
+  .public-rental-header>a:last-child{min-height:40px;font-size:12px}
+  .public-vehicle-hero{padding:14px 16px 28px}
+  .public-vehicle-copy h1{font-size:clamp(36px,10vw,48px);letter-spacing:-1.5px}
+  .public-vehicle-copy>p{font-size:15px}
+  .public-vehicle-photo{min-height:210px}
+  .public-booking-section{padding:26px 16px 38px}
+  .public-prebook-form{grid-template-columns:1fr;gap:15px}
+  .public-prebook-form label{font-size:13px}
+  .public-prebook-form input,.public-prebook-form select,.public-prebook-form textarea{min-height:46px;font-size:16px}
+  .public-form-wide,.public-estimate,.public-form-error,.public-form-success,.public-submit,.public-privacy-note{grid-column:auto}
+  .public-submit{min-height:50px;font-size:15px}
+  .public-privacy-note{font-size:12px}
+}
