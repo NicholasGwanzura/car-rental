@@ -637,10 +637,42 @@ button:focus-visible,a:focus-visible,select:focus-visible,input:focus-visible,te
   .site-footer>span{display:none}
   .site-footer>a:not(.site-footer-brand){font-size:10px}
 }
+.site-inner-intro{max-width:1146px;margin:0 auto;padding:55px 27px 36px}
+.site-inner-intro h1{max-width:740px;margin:12px 0;color:#17374a;font-size:clamp(32px,4.5vw,52px);font-weight:800;letter-spacing:-1.8px;line-height:1.1}
+.site-inner-intro p{max-width:620px;margin:0;color:#64747c;font-size:16px;line-height:1.65}
+.site-inner-intro+.site-fleet-strip{margin-bottom:70px}
+.site-inner-intro+.site-services{padding-top:10px}
+.site-inner-intro+.site-contact{margin-top:10px}
+@media(max-width:640px){.site-inner-intro{padding:37px 18px 29px}.site-inner-intro h1{font-size:34px;letter-spacing:-1px}.site-inner-intro p{font-size:15px}.site-inner-intro+.site-fleet-strip{margin-bottom:45px}}
 @media(max-width:360px){
   .site-header{gap:7px;padding-right:10px;padding-left:10px}
   .site-brand strong{font-size:11px}
   .site-admin-link,.site-header-cta{padding:0 7px;font-size:8px}
   .site-nav{gap:23px}
   .fleet-types article small{font-size:8px}
+}
+@media(max-width:640px){
+  .form-modal{width:100%;max-height:94dvh;padding:18px 16px calc(18px + env(safe-area-inset-bottom));border-radius:18px 18px 0 0}
+  .form-field,.inspection-check-item{font-size:13px}
+  .form-field input,.form-field select,.form-field textarea{min-height:44px;font-size:16px}
+  .form-actions{margin:0 -16px -18px;padding:12px 16px calc(12px + env(safe-area-inset-bottom));border-top:1px solid #e8ede9;background:#fff}
+  .site-header{min-height:0}
+  .site-admin-link,.site-header-cta{min-height:40px;font-size:11px}
+  .site-nav{justify-content:space-around;gap:10px;padding:12px 0 2px}
+  .site-nav a{font-size:13px}
+  .site-hero-intro{font-size:15px;line-height:1.6}
+  .site-button-primary{min-height:48px;font-size:14px}
+  .site-button-link{font-size:13px}
+  .site-proof{font-size:12px}
+  .site-fleet-strip h2,.site-section-heading h2{font-size:26px}
+  .fleet-types{grid-template-columns:1fr;gap:0}
+  .fleet-types article{grid-template-columns:24px 1fr;padding:11px 4px;border-left:0;border-top:1px solid #e5e9e4}
+  .fleet-types article strong{font-size:14px}
+  .fleet-types article small{font-size:12px}
+  .site-service-grid{grid-template-columns:1fr}
+  .site-service-card{min-height:0;padding:17px}
+  .site-service-card h3{font-size:16px}
+  .site-service-card p,.site-section-heading>p,.site-contact-copy>p{font-size:14px}
+  .site-service-card>a{font-size:13px}
+  .site-email-card a,.site-phone-card strong{font-size:13px}
 }
