@@ -1,4 +1,5 @@
 import Image from "next/image";
+import { PwaInstallButton } from "@/components/pwa-install-button";
 
 const contactNumbers = [
   { label: "Zimbabwe", display: "+263 772 313 286", tel: "+263772313286" },
@@ -46,7 +47,7 @@ export function ClassicRidesHome() {
 export function SiteHeader() { return <>
     <header className="site-header">
       <a className="site-brand" href="/" aria-label="Classic Rides home"><span className="site-brand-text"><strong>CLASSIC RIDES</strong><small>CAR RENTAL</small></span></a>
-      <nav className="site-nav" aria-label="Main navigation"><a href="/services">Services</a><a href="/cars">Fleet</a><a href="/contact">Contact</a></nav>
+      <nav className="site-nav" aria-label="Main navigation"><a href="/services">Services</a><a href="/cars">Fleet</a><a href="/contact">Contact</a><PwaInstallButton /></nav>
       <div className="site-header-actions">
         <a className="site-admin-link" href="/workspace">Admin</a>
         <a className="site-header-cta" href="mailto:sales@classicrides.online?subject=Car%20rental%20enquiry">Book a ride <span aria-hidden="true">↗</span></a>

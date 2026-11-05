@@ -721,4 +721,7 @@ button:focus-visible,a:focus-visible,select:focus-visible,input:focus-visible,te
 .public-submit,.public-link-button{background:#000000}
 .public-submit:hover,.public-link-button:hover{background:#262626}
 .public-vehicle-photo.vehicle-has-photo img{object-fit:cover}
+.site-install-button{min-height:32px;padding:0 10px;border-color:#f36b21;background:#f36b21;color:#fff;font-size:11px;cursor:pointer}
+.site-install-button:hover{border-color:#d95712;background:#d95712}
 @media(max-width:640px){.fleet-vehicle-thumb{width:56px;height:44px}.fleet-image-current{flex-wrap:wrap}.public-vehicle-photo.vehicle-has-photo{min-height:260px}}
+@media(max-width:640px){.site-install-button{min-height:32px;padding:0 8px;font-size:11px}.site-nav:has(.site-install-button){gap:6px}}
