@@ -397,6 +397,26 @@ html,body{background:#fff}
 .form-modal{overscroll-behavior:contain;scrollbar-gutter:stable}
 .modal-close{width:40px;height:40px;flex:0 0 auto}
 .modal-backdrop{overscroll-behavior:contain}
+.form-modal{width:min(100%,640px);max-width:100%;overflow-x:hidden}
+.form-grid>*{min-width:0}
+.inspection-checklist{min-width:0;margin:0;padding:16px;border:1px solid #e3e9e5;border-radius:10px}
+.inspection-checklist legend{padding:0 6px;color:#29352e;font-size:13px;font-weight:700}
+.inspection-checklist>p{margin:0 0 14px;color:#68756d;font-size:12px;line-height:1.5}
+.inspection-checklist-items{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px}
+.inspection-check-item{display:flex;min-width:0;flex-direction:column;gap:6px;color:#53645a;font-size:12px;font-weight:600}
+.inspection-check-item span{min-width:0;line-height:1.35}
+.inspection-check-item select{width:100%;min-width:0;min-height:42px;padding:8px 10px;border:1px solid #e3e9e5;border-radius:7px;background:#fff;color:#29352e;font:400 13px 'Honor Sans',sans-serif}
+.client-signature{min-width:0;display:grid;gap:12px}
+.signature-pad-wrap{min-width:0;padding:12px;border:1px solid #e3e9e5;border-radius:10px}
+.signature-label{display:flex;flex-wrap:wrap;align-items:center;gap:7px;margin-bottom:9px;color:#29352e;font-size:11px;font-weight:700;letter-spacing:.4px}
+.signature-label small{color:#7b8980;font-size:11px;font-weight:400;letter-spacing:0}
+.signature-pad{display:block;width:100%;height:160px;border:1px dashed #bfd1c3;border-radius:8px;background:#fbfcfb;touch-action:none}
+.signature-pad-footer{display:flex;align-items:center;justify-content:space-between;gap:12px;margin-top:7px;color:#7b8980;font-size:11px}
+.booking-steps{grid-column:1/-1;display:flex;gap:5px;margin-bottom:4px}
+.booking-steps span{flex:1;padding:9px 5px;border-radius:7px;background:#f1f4f1;color:#718078;text-align:center;font-size:11px;font-weight:600}
+.booking-steps span.active{background:#e1f1e6;color:#23654c}
+.booking-step-title{grid-column:1/-1;margin:0;color:#29352e;font-size:16px}
+@media(max-width:640px){.modal-backdrop{align-items:end;padding:0}.form-modal{width:100%;max-height:94dvh;padding:18px 16px calc(18px + env(safe-area-inset-bottom));border-radius:18px 18px 0 0;scrollbar-gutter:auto}.form-grid{grid-template-columns:1fr}.inspection-checklist-items{grid-template-columns:1fr}.form-field,.inspection-check-item{font-size:13px}.form-field input,.form-field select,.form-field textarea{min-height:44px;font-size:16px}.form-actions{position:sticky;bottom:0;z-index:1;margin:0 -16px -18px;padding:12px 16px calc(12px + env(safe-area-inset-bottom));background:#fff;border-top:1px solid #e8ede9}.form-actions .button{min-height:44px}.signature-pad{height:180px}}
 button:focus-visible,a:focus-visible,select:focus-visible,input:focus-visible,textarea:focus-visible{outline:3px solid #68a183;outline-offset:2px}
 .account-control button:focus-visible,.mobile-nav button:focus-visible,.mobile-nav a:focus-visible{outline-offset:-3px}
 

@@ -280,19 +280,7 @@ function BookingsWorkspace() {
     <div className="list-toolbar booking-toolbar"><label className="search-box"><span aria-hidden="true">⌕</span><input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Search bookings" aria-label="Search bookings" /></label><select className="filter-select" aria-label="Filter booking status" value={filter} onChange={(event) => setFilter(event.target.value)}><option>All bookings</option><option>Confirmed</option><option>Active</option><option>Completed</option><option>Cancelled</option></select><span className="result-count">{filtered.length} {filtered.length === 1 ? "booking" : "bookings"}</span></div>
     {bookings.length === 0 ? <EmptyState icon="▤" title="Your first booking is a few steps away" detail="Add a vehicle and a customer, then create a booking with pickup and return dates." action={<div className="empty-actions"><Link href="/fleet" className="button button-quiet">Add vehicle</Link><Link href="/customers" className="button button-quiet">Add customer</Link><button className="button button-primary" onClick={() => setOpen(true)}>＋ New booking</button></div>} /> : filtered.length === 0 ? <EmptyState icon="⌕" title="No bookings found" detail="Change the status filter or search by booking reference." /> : <TableFrame><thead><tr><th>BOOKING</th><th>CUSTOMER</th><th>VEHICLE</th><th>DATES</th><th>TOTAL</th><th>STATUS</th><th>ACTION</th></tr></thead><tbody>{filtered.map((booking) => <tr key={booking.id}><td data-label="Booking"><span className="table-primary">{booking.reference}</span>{booking.checkoutOdometer !== undefined && <div className="table-secondary">Pickup: {booking.checkoutOdometer.toLocaleString()} km · {booking.checkoutFuel ?? 0}% fuel</div>}{booking.checkoutNote && <div className="table-secondary">Pickup note: {booking.checkoutNote}</div>}{booking.returnOdometer !== undefined && <div className="table-secondary">Return: {booking.returnOdometer.toLocaleString()} km · {booking.returnFuel ?? 0}% fuel</div>}{booking.returnNote && <div className="table-secondary">Return note: {booking.returnNote}</div>}{booking.distanceKm !== undefined && <div className="table-secondary">Distance: {booking.distanceKm.toLocaleString()} km · included {booking.includedMileageKm?.toLocaleString()} km</div>}{(booking.excessMileageCharge ?? 0) > 0 && <div className="table-secondary">Excess mileage: {formatMoney(booking.excessMileageCharge ?? 0)}</div>}{(booking.depositAmount ?? 0) > 0 && <div className="table-secondary">Deposit: {formatMoney(booking.depositAmount ?? 0)}</div>}</td><td data-label="Customer">{customerName(customers.find((item) => item.id === booking.customerId))}</td><td data-label="Vehicle">{vehicleName(vehicles.find((item) => item.id === booking.vehicleId))}</td><td data-label="Dates"><span>{dateLabel(booking.startDate)}</span><div className="table-secondary">to {dateLabel(booking.endDate)}</div></td><td data-label="Total">{formatMoney(booking.total + (booking.excessMileageCharge ?? 0))}</td><td data-label="Status"><span className={`status-pill status-${slug(booking.status)}`}>{booking.status}</span></td><td data-label="Action"><div className="row-actions">{booking.status === "Confirmed" && <button className="text-action" onClick={() => setFlow({ booking, action: "checkout" })}>Start rental</button>}{booking.status === "Active" && <button className="text-action" onClick={() => setFlow({ booking, action: "return" })}>Inspect & complete</button>}{booking.status === "Confirmed" && <button className="text-action text-action-muted" onClick={() => setCancelPending(booking)}>Cancel</button>}</div></td></tr>)}</tbody></TableFrame>}
     <PublicPrebookingInbox vehicles={vehicles} />
-    {open && <Modal title="Create a booking" onClose={() => { setOpen(false); setError(""); }}>
-      {customers.length === 0 || vehicles.length === 0 ? <div className="setup-needed"><p>Add a renter and an available vehicle before creating a booking.</p><div className="empty-actions">{vehicles.length === 0 && <Link className="button button-quiet" href="/fleet">Add vehicle</Link>}{customers.length === 0 && <Link className="button button-quiet" href="/customers">Add customer</Link>}</div></div> : <form className="form-grid" onSubmit={save}>
-        <Field label="Customer" wide><select name="customerId" required value={customerId} onChange={(event) => setCustomerId(event.target.value)}><option value="" disabled>Choose a customer</option>{customers.map((customer) => <option key={customer.id} value={customer.id}>{customer.name} · {customer.phone}</option>)}</select></Field>
-        <Field label="Vehicle" wide><select name="vehicleId" required value={vehicleId} onChange={(event) => setVehicleId(event.target.value)}><option value="" disabled>Choose a vehicle</option>{vehicles.filter((vehicle) => vehicle.status === "Available").map((vehicle) => <option key={vehicle.id} value={vehicle.id}>{vehicle.registration} · {vehicle.vehicleType} · {vehicle.make} {vehicle.model} · {formatMoney(vehicle.dailyRate)}/day · deposit {formatMoney(vehicle.depositAmount)}</option>)}</select></Field>
-        <Field label="Pickup date"><input name="startDate" type="date" min={minimumStartDate} value={startDate} onChange={(event) => { const next = event.target.value; setStartDate(next); if (endDate <= next) setEndDate(dayAfter(next)); }} required /></Field>
-        <Field label="Return date"><input name="endDate" type="date" min={dayAfter(startDate || minimumStartDate)} value={endDate} onChange={(event) => setEndDate(event.target.value)} required /></Field>
-        <div className="form-field-wide"><BookingPriceSummary vehicle={selectedVehicle} startDate={startDate} endDate={endDate} /></div>
-        <Field label="Booking note (optional)" wide><textarea name="note" rows={2} placeholder="Pickup location or special request" /></Field>
-        {error && <p className="form-error form-field-wide" role="alert">{error}</p>}
-        <p className="form-hint form-field-wide">The booking total is calculated from the selected vehicle’s day rate and rental duration.</p>
-        <div className="form-field-wide"><DialogActions onCancel={() => setOpen(false)} submit="Confirm booking" /></div>
-      </form>}
-    </Modal>}
+    {open && <BookingsCreateOnly onClose={() => { setOpen(false); setError(""); }} />}
     {flow && <BookingLifecycleDialog booking={flow.booking} action={flow.action} onClose={() => setFlow(null)} />}
     {cancelPending && <WorkspaceDialog title="Cancel this booking?" eyebrow="BOOKING CHANGE" onClose={() => setCancelPending(null)}><p className="modal-description">Booking {cancelPending.reference} will be marked cancelled and removed from outstanding payment totals. The record will remain available for reference.</p><div className="form-actions"><button className="button button-quiet" type="button" data-dialog-initial-focus onClick={() => setCancelPending(null)}>Keep booking</button><button className="button button-danger" type="button" onClick={() => { updateBooking(cancelPending.id, { status: "Cancelled" }); setCancelPending(null); }}>Cancel booking</button></div></WorkspaceDialog>}
   </>;
@@ -421,41 +409,42 @@ export function ModuleWorkspace({ module }: { module: string }) {
 function BookingModalBridge({ onClose }: { onClose: () => void }) { return <BookingsCreateOnly onClose={onClose} />; }
 function BookingsCreateOnly({ onClose }: { onClose: () => void }) {
   const { customers, vehicles, bookings, addBooking } = useRentalData();
+  const [step, setStep] = useState(1);
   const [error, setError] = useState("");
   const [customerId, setCustomerId] = useState("");
   const [vehicleId, setVehicleId] = useState("");
   const [startDate, setStartDate] = useState(() => dateInputValue(new Date(Date.now() + 86_400_000)));
   const [endDate, setEndDate] = useState(() => dateInputValue(new Date(Date.now() + 2 * 86_400_000)));
+  const [note, setNote] = useState("");
   const today = dateInputValue(new Date());
   const selectedVehicle = vehicles.find((vehicle) => vehicle.id === vehicleId);
+  const selectedCustomer = customers.find((customer) => customer.id === customerId);
 
+  function next() {
+    setError("");
+    if (step === 1 && (!selectedCustomer || !selectedVehicle)) { setError("Choose a customer and an available vehicle."); return; }
+    if (step === 2) {
+      if (!startDate || startDate < today || !endDate || endDate <= startDate) { setError("Choose valid pickup and return dates."); return; }
+      if (bookings.some((booking) => booking.vehicleId === vehicleId && ["Confirmed", "Active"].includes(booking.status) && startDate < booking.endDate && endDate > booking.startDate)) { setError("This vehicle already has a booking for part of those dates."); return; }
+    }
+    setStep(step + 1);
+  }
   function save(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    const form = new FormData(event.currentTarget);
-    const selectedCustomerId = String(form.get("customerId"));
-    const selectedVehicleId = String(form.get("vehicleId"));
-    const pickup = String(form.get("startDate"));
-    const returned = String(form.get("endDate"));
-    if (returned <= pickup) { setError("Choose a return date after the pickup date."); return; }
-    if (bookings.some((booking) => booking.vehicleId === selectedVehicleId && ["Confirmed", "Active"].includes(booking.status) && pickup < booking.endDate && returned > booking.startDate)) {
-      setError("This vehicle already has a booking for part of those dates.");
-      return;
-    }
-    if (!selectedVehicle) return;
-    addBooking({ customerId: selectedCustomerId, vehicleId: selectedVehicleId, startDate: pickup, endDate: returned, total: selectedVehicle.dailyRate * nightsBetween(pickup, returned), depositAmount: selectedVehicle.depositAmount, mileageAllowanceKmPerDay: selectedVehicle.mileageAllowanceKmPerDay, excessMileageRatePerKm: selectedVehicle.excessMileageRatePerKm, note: String(form.get("note")).trim() });
+    if (!selectedCustomer || !selectedVehicle || !startDate || !endDate || endDate <= startDate) { setError("Complete all booking details."); return; }
+    if (bookings.some((booking) => booking.vehicleId === vehicleId && ["Confirmed", "Active"].includes(booking.status) && startDate < booking.endDate && endDate > booking.startDate)) { setStep(2); setError("This vehicle is no longer available for those dates."); return; }
+    addBooking({ customerId, vehicleId, startDate, endDate, total: selectedVehicle.dailyRate * nightsBetween(startDate, endDate), depositAmount: selectedVehicle.depositAmount, mileageAllowanceKmPerDay: selectedVehicle.mileageAllowanceKmPerDay, excessMileageRatePerKm: selectedVehicle.excessMileageRatePerKm, note: note.trim() });
     onClose();
   }
-
   return <Modal title="Create a booking" onClose={onClose}>
     {customers.length === 0 || vehicles.length === 0 ? <div className="setup-needed"><p>Add a renter and an available vehicle before creating a booking.</p><div className="empty-actions">{vehicles.length === 0 && <Link className="button button-quiet" href="/fleet">Add vehicle</Link>}{customers.length === 0 && <Link className="button button-quiet" href="/customers">Add customer</Link>}</div></div> : <form className="form-grid" onSubmit={save}>
-      <Field label="Customer" wide><select name="customerId" value={customerId} onChange={(event) => setCustomerId(event.target.value)} required><option value="" disabled>Choose a customer</option>{customers.map((customer) => <option key={customer.id} value={customer.id}>{customer.name} · {customer.phone}</option>)}</select></Field>
-      <Field label="Vehicle" wide><select name="vehicleId" value={vehicleId} onChange={(event) => setVehicleId(event.target.value)} required><option value="" disabled>Choose a vehicle</option>{vehicles.filter((vehicle) => vehicle.status === "Available").map((vehicle) => <option key={vehicle.id} value={vehicle.id}>{vehicle.registration} · {vehicle.vehicleType} · {vehicle.make} {vehicle.model} · {formatMoney(vehicle.dailyRate)}/day · deposit {formatMoney(vehicle.depositAmount)}</option>)}</select></Field>
-      <Field label="Pickup date"><input name="startDate" type="date" min={today} value={startDate} onChange={(event) => { const next = event.target.value; setStartDate(next); if (endDate <= next) setEndDate(dayAfter(next)); }} required /></Field>
-      <Field label="Return date"><input name="endDate" type="date" min={dayAfter(startDate || today)} value={endDate} onChange={(event) => setEndDate(event.target.value)} required /></Field>
-      <div className="form-field-wide"><BookingPriceSummary vehicle={selectedVehicle} startDate={startDate} endDate={endDate} /></div>
-      <Field label="Booking note (optional)" wide><textarea name="note" rows={2} placeholder="Pickup location or special request" /></Field>
+      <div className="booking-steps" aria-label={`Booking step ${step} of 3`}>{["1. Renter & car", "2. Dates", "3. Review"].map((label, index) => <span className={step === index + 1 ? "active" : ""} key={label}>{label}</span>)}</div>
+      <h3 className="booking-step-title">{step === 1 ? "Who and which car?" : step === 2 ? "When is the rental?" : "Review your booking"}</h3>
+      {step === 1 && <><Field label="Customer" wide><select value={customerId} onChange={(event) => setCustomerId(event.target.value)} required><option value="" disabled>Choose a customer</option>{customers.map((customer) => <option key={customer.id} value={customer.id}>{customer.name} · {customer.phone}</option>)}</select></Field><Field label="Vehicle" wide><select value={vehicleId} onChange={(event) => setVehicleId(event.target.value)} required><option value="" disabled>Choose a vehicle</option>{vehicles.filter((vehicle) => vehicle.status === "Available").map((vehicle) => <option key={vehicle.id} value={vehicle.id}>{vehicle.registration} · {vehicle.vehicleType} · {vehicle.make} {vehicle.model} · {formatMoney(vehicle.dailyRate)}/day</option>)}</select></Field></>}
+      {step === 2 && <><Field label="Pickup date"><input type="date" min={today} value={startDate} onChange={(event) => { const nextDate = event.target.value; setStartDate(nextDate); if (endDate <= nextDate) setEndDate(dayAfter(nextDate)); }} required /></Field><Field label="Return date"><input type="date" min={dayAfter(startDate || today)} value={endDate} onChange={(event) => setEndDate(event.target.value)} required /></Field></>}
+      {step === 3 && <><p className="form-hint form-field-wide">{selectedCustomer?.name} · {vehicleName(selectedVehicle)}<br />{dateLabel(startDate)} to {dateLabel(endDate)}</p><div className="form-field-wide"><BookingPriceSummary vehicle={selectedVehicle} startDate={startDate} endDate={endDate} /></div><Field label="Booking note (optional)" wide><textarea value={note} onChange={(event) => setNote(event.target.value)} rows={2} placeholder="Pickup location or special request" /></Field></>}
       {error && <p className="form-error form-field-wide" role="alert">{error}</p>}
-      <div className="form-field-wide"><DialogActions onCancel={onClose} submit="Confirm booking" /></div>
+      <div className="form-field-wide"><div className="form-actions"><button className="button button-quiet" type="button" onClick={() => { setError(""); if (step > 1) setStep(step - 1); else onClose(); }}>{step === 1 ? "Cancel" : "Back"}</button>{step < 3 ? <button className="button button-primary" type="button" onClick={next}>Continue</button> : <button className="button button-primary" type="submit">Confirm booking</button>}</div></div>
     </form>}
   </Modal>;
 }
