@@ -5,8 +5,9 @@ import Image from "next/image";
 import { useMemo, useState, type FormEvent } from "react";
 import { AppShell, PageTopbar } from "@/components/app-shell";
 import { WorkspaceDialog } from "@/components/workspace-dialog";
+import { BookingRows, DrillLink, useDrilldown } from "@/components/drilldown";
 import { compressIdentityImage } from "@/lib/identity-image";
-import { costEntries, inRange, monthlyTrend, periodLabels, periodRange, summarize, type CostEntry, type DateRange, type MonthPoint, type PeriodKey } from "@/lib/profitability";
+import { costEntries, inRange, incomeEntries, monthlyTrend, periodLabels, periodRange, summarize, type CostEntry, type DateRange, type MonthPoint, type PeriodKey } from "@/lib/profitability";
 import { expenseCategories, expensePaymentMethods, formatMoney, useRentalData, type Expense, type ExpenseCategory, type Vehicle } from "@/lib/rental-data";
 
 const GENERAL = "__general";
@@ -55,7 +56,7 @@ function axisTicks(value: number) {
   return Array.from({ length: count + 1 }, (_, index) => index * step);
 }
 
-function TrendChart({ points }: { points: MonthPoint[] }) {
+function TrendChart({ points, onSelect }: { points: MonthPoint[]; onSelect: (point: MonthPoint) => void }) {
   const [active, setActive] = useState<string | null>(null);
   const ticks = axisTicks(Math.max(...points.map((point) => Math.max(point.income, point.costs)), 0));
   const max = ticks[ticks.length - 1];
@@ -69,8 +70,8 @@ function TrendChart({ points }: { points: MonthPoint[] }) {
         <div className="trend-groups">{points.map((point, index) => {
           const align = index < 2 ? "start" : index > points.length - 3 ? "end" : "center";
           return <button type="button" key={point.month} className={`trend-group${active === point.month ? " is-active" : ""}`}
-            onMouseEnter={() => setActive(point.month)} onMouseLeave={() => setActive(null)} onFocus={() => setActive(point.month)} onBlur={() => setActive(null)}
-            aria-label={`${point.label}: income ${formatMoney(point.income)}, expenses ${formatMoney(point.costs)}, net ${signedMoney(point.net)}`}>
+            onClick={() => onSelect(point)} onMouseEnter={() => setActive(point.month)} onMouseLeave={() => setActive(null)} onFocus={() => setActive(point.month)} onBlur={() => setActive(null)}
+            aria-label={`${point.label}: income ${formatMoney(point.income)}, expenses ${formatMoney(point.costs)}, net ${signedMoney(point.net)}. Open breakdown`}>
             <span className="trend-bars">
               <span className="trend-bar trend-bar-income" style={{ height: `${(point.income / max) * 100}%` }} />
               <span className="trend-bar trend-bar-costs" style={{ height: `${(point.costs / max) * 100}%` }} />
@@ -80,6 +81,7 @@ function TrendChart({ points }: { points: MonthPoint[] }) {
               <span><i className="swatch swatch-income" />Income <b>{formatMoney(point.income)}</b></span>
               <span><i className="swatch swatch-costs" />Expenses <b>{formatMoney(point.costs)}</b></span>
               <span className="trend-tooltip-net">Net <b>{signedMoney(point.net)}</b></span>
+              <span className="trend-tooltip-hint">Click for breakdown</span>
             </span>}
           </button>;
         })}</div>
@@ -87,6 +89,16 @@ function TrendChart({ points }: { points: MonthPoint[] }) {
     </div>
     <div className="trend-labels" aria-hidden="true">{points.map((point) => <span key={point.month}>{point.label}</span>)}</div>
   </div>;
+}
+
+function CostRows({ entries }: { entries: CostEntry[] }) {
+  const { expenses, vehicles } = useRentalData();
+  if (!entries.length) return <p className="drill-empty">No expenses.</p>;
+  return <ul className="drill-list">{[...entries].sort((a, b) => b.date.localeCompare(a.date)).map((entry) => {
+    const record = expenses.find((item) => item.id === entry.id);
+    const vehicle = vehicles.find((item) => item.id === entry.vehicleId);
+    return <li key={entry.id}><span><strong>{record?.payee || entry.description || entry.category}</strong><small>{shortDate(entry.date)} · {entry.category} · {entry.vehicleId ? <DrillLink kind="vehicle" id={vehicle?.id}>{vehicle ? `${vehicle.make} ${vehicle.model}` : "Removed vehicle"}</DrillLink> : "General business"}{entry.source === "maintenance" ? " · maintenance job" : ""}</small></span><span>{formatMoney(entry.amount)}</span></li>;
+  })}</ul>;
 }
 
 function ExpenseDialog({ expense, vehicles, onClose }: { expense: Expense | null; vehicles: Vehicle[]; onClose: () => void }) {
@@ -141,6 +153,7 @@ function ExpenseDialog({ expense, vehicles, onClose }: { expense: Expense | null
 
 export function ExpensesWorkspace() {
   const { ready, bookings, expenses, maintenance, vehicles, deleteExpense, canViewFinancials } = useRentalData();
+  const { open: openDrill } = useDrilldown();
   const [tab, setTab] = useState<"profit" | "expenses">("profit");
   const [period, setPeriod] = useState<PeriodKey>("this-month");
   const [custom, setCustom] = useState<DateRange>(() => ({ from: todayValue().slice(0, 8) + "01", to: todayValue() }));
@@ -176,6 +189,34 @@ export function ExpensesWorkspace() {
   const periodName = period === "custom" ? `${shortDate(range.from)} – ${shortDate(range.to)}` : periodLabels[period];
 
   function openNew() { setEditing(null); setDialogOpen(true); }
+  const sum = (values: number[]) => values.reduce((total, value) => total + value, 0);
+  function incomeBookings(from: DateRange) {
+    const ids = new Set(incomeEntries(bookings).filter((entry) => inRange(entry.date, from)).map((entry) => entry.bookingId));
+    return bookings.filter((booking) => ids.has(booking.id)).sort((a, b) => b.startDate.localeCompare(a.startDate));
+  }
+  function periodCosts(from: DateRange) { return costEntries(expenses, maintenance).filter((entry) => inRange(entry.date, from)); }
+  function openIncome() {
+    const rows = incomeBookings(range);
+    openDrill({ kind: "custom", title: `Rental income · ${periodName}`, eyebrow: `${rows.length} RENTALS · ${formatMoney(summary.income)}`, content: <BookingRows bookings={rows} /> });
+  }
+  function openCategory(category: ExpenseCategory) {
+    const rows = periodCosts(range).filter((entry) => entry.category === category);
+    openDrill({ kind: "custom", title: category, eyebrow: `${periodName.toUpperCase()} · ${formatMoney(sum(rows.map((row) => row.amount)))}`, content: <CostRows entries={rows} /> });
+  }
+  function openOverhead() {
+    const rows = periodCosts(range).filter((entry) => !entry.vehicleId);
+    openDrill({ kind: "custom", title: "General business overhead", eyebrow: `${periodName.toUpperCase()} · ${formatMoney(sum(rows.map((row) => row.amount)))}`, content: <CostRows entries={rows} /> });
+  }
+  function openMonth(point: MonthPoint) {
+    const [year, month] = point.month.split("-").map(Number);
+    const monthRange = { from: `${point.month}-01`, to: `${point.month}-${String(new Date(year, month, 0).getDate()).padStart(2, "0")}` };
+    const rows = incomeBookings(monthRange);
+    openDrill({ kind: "custom", title: point.label, eyebrow: `NET ${signedMoney(point.net)}`, content: <>
+      <div className="drill-stats"><div><span>Income</span><strong>{formatMoney(point.income)}</strong></div><div><span>Expenses</span><strong>{formatMoney(point.costs)}</strong></div><div><span>Net</span><strong>{signedMoney(point.net)}</strong></div></div>
+      <section className="drill-section"><h3>Rentals<span>{rows.length}</span></h3><BookingRows bookings={rows} /></section>
+      <section className="drill-section"><h3>Expenses<span>{periodCosts(monthRange).length}</span></h3><CostRows entries={periodCosts(monthRange)} /></section>
+    </> });
+  }
   function exportProfit() {
     downloadCsv(`classic-rides-profit-${range.from}-to-${range.to}.csv`.replace("0000-01-01", "start").replace("9999-12-31", "today"), [
       ["Classic Rides profit and loss", periodName],
@@ -222,35 +263,35 @@ export function ExpensesWorkspace() {
 
         {tab === "profit" ? <>
           <section className="profit-tiles" aria-label={`Totals for ${periodName}`}>
-            <article className="profit-tile"><span>Rental income</span><strong>{formatMoney(summary.income)}</strong><small>{formatMoney(summary.collected)} collected · {formatMoney(summary.outstanding)} unpaid</small></article>
-            <article className="profit-tile"><span>Expenses</span><strong>{formatMoney(summary.costs)}</strong><small>{formatMoney(summary.directCosts)} on vehicles · {formatMoney(summary.overhead)} overhead</small></article>
+            <button type="button" className="profit-tile is-clickable" onClick={openIncome}><span>Rental income</span><strong>{formatMoney(summary.income)}</strong><small>{formatMoney(summary.collected)} collected · {formatMoney(summary.outstanding)} unpaid</small><em aria-hidden="true">View rentals ›</em></button>
+            <button type="button" className="profit-tile is-clickable" onClick={() => setTab("expenses")}><span>Expenses</span><strong>{formatMoney(summary.costs)}</strong><small>{formatMoney(summary.directCosts)} on vehicles · {formatMoney(summary.overhead)} overhead</small><em aria-hidden="true">View expenses ›</em></button>
             <article className={`profit-tile profit-tile-net${summary.net < 0 ? " is-loss" : ""}`}><span>Net profit</span><strong>{signedMoney(summary.net)}</strong><small>{summary.net < 0 ? "Loss · " : ""}{percent(summary.margin)} margin</small></article>
-            <article className="profit-tile"><span>Rentals</span><strong>{summary.rentals}</strong><small>{summary.rentalDays} rental days · {summary.rentalDays ? formatMoney(Math.round(summary.income / summary.rentalDays)) : "$0"} per day</small></article>
+            <button type="button" className="profit-tile is-clickable" onClick={openIncome}><span>Rentals</span><strong>{summary.rentals}</strong><small>{summary.rentalDays} rental days · {summary.rentalDays ? formatMoney(Math.round(summary.income / summary.rentalDays)) : "$0"} per day</small><em aria-hidden="true">View rentals ›</em></button>
           </section>
           <p className="finance-basis">Income counts active and completed rentals by pickup date. Expenses include completed maintenance jobs. Showing {periodName.toLowerCase()}.</p>
 
           <div className="finance-grid">
             <section className="panel finance-panel finance-panel-wide"><div className="panel-heading"><div><p className="eyebrow">TREND</p><h2>Income vs expenses by month</h2><p className="finance-panel-note">{trend.length > 1 ? `${trend[0].label} – ${trend[trend.length - 1].label}` : ""}</p></div><button className="button button-quiet" type="button" onClick={exportProfit}>↓ Export P&L CSV</button></div>
-              <TrendChart points={trend} />
+              <TrendChart points={trend} onSelect={openMonth} />
               <details className="finance-table-toggle"><summary>Show monthly table</summary>
                 <div className="data-table-wrap"><table className="data-table finance-table"><thead><tr><th>MONTH</th><th>INCOME</th><th>EXPENSES</th><th>NET</th></tr></thead><tbody>{trend.map((point) => <tr key={point.month}><td data-label="Month">{point.label}</td><td data-label="Income">{formatMoney(point.income)}</td><td data-label="Expenses">{formatMoney(point.costs)}</td><td data-label="Net">{signedMoney(point.net)}</td></tr>)}</tbody></table></div>
               </details>
             </section>
 
             <section className="panel finance-panel"><div className="panel-heading"><div><p className="eyebrow">WHERE THE MONEY GOES</p><h2>Expenses by category</h2></div></div>
-              {summary.byCategory.length === 0 ? <p className="profit-empty-note">No expenses in this period.</p> : <ul className="category-bars">{summary.byCategory.map((row) => <li key={row.category}>
+              {summary.byCategory.length === 0 ? <p className="profit-empty-note">No expenses in this period.</p> : <ul className="category-bars">{summary.byCategory.map((row) => <li key={row.category}><button type="button" className="category-row" onClick={() => openCategory(row.category)} aria-label={`${row.category}: ${formatMoney(row.amount)}. Show expenses`}>
                 <span className="category-name">{row.category}</span>
                 <span className="category-track"><span className="category-fill" style={{ width: `${maxCategory ? Math.max(2, (row.amount / maxCategory) * 100) : 0}%` }} /></span>
                 <span className="category-value">{formatMoney(row.amount)}<small>{summary.costs ? Math.round((row.amount / summary.costs) * 100) : 0}%</small></span>
-              </li>)}</ul>}
+              </button></li>)}</ul>}
             </section>
 
             <section className="panel finance-panel"><div className="panel-heading"><div><p className="eyebrow">BOTTOM LINE</p><h2>Profit and loss</h2></div></div>
               <dl className="pnl-list">
-                <div><dt>Rental income</dt><dd>{formatMoney(summary.income)}</dd></div>
+                <div><dt><button type="button" className="drill-link" onClick={openIncome}>Rental income</button></dt><dd>{formatMoney(summary.income)}</dd></div>
                 <div><dt>Vehicle costs</dt><dd>−{formatMoney(summary.directCosts)}</dd></div>
                 <div className="pnl-subtotal"><dt>Vehicle profit</dt><dd>{signedMoney(summary.income - summary.directCosts)}</dd></div>
-                <div><dt>General business overhead</dt><dd>−{formatMoney(summary.overhead)}</dd></div>
+                <div><dt><button type="button" className="drill-link" onClick={openOverhead}>General business overhead</button></dt><dd>−{formatMoney(summary.overhead)}</dd></div>
                 <div className={`pnl-total${summary.net < 0 ? " is-loss" : ""}`}><dt>Net profit</dt><dd>{signedMoney(summary.net)}</dd></div>
               </dl>
             </section>
@@ -258,7 +299,7 @@ export function ExpensesWorkspace() {
 
           <section className="panel finance-panel finance-vehicles"><div className="panel-heading"><div><p className="eyebrow">BY VEHICLE</p><h2>Profit per car</h2></div><span className="result-count">Overhead not allocated</span></div>
             {summary.byVehicle.length === 0 ? <p className="profit-empty-note">Add vehicles and bookings to see profit per car.</p> : <div className="data-table-wrap"><table className="data-table finance-table"><thead><tr><th>VEHICLE</th><th>RENTALS</th><th>RENTAL DAYS</th><th>INCOME</th><th>VEHICLE COSTS</th><th>NET</th><th>MARGIN</th><th>NET / RENTAL DAY</th></tr></thead><tbody>
-              {summary.byVehicle.map((row) => <tr key={row.vehicleId}><td data-label="Vehicle"><div className="table-primary">{row.vehicle ? `${row.vehicle.make} ${row.vehicle.model}` : "Removed vehicle"}</div><div className="table-secondary">{row.vehicle?.registration ?? ""}</div></td><td data-label="Rentals">{row.bookings}</td><td data-label="Rental days">{row.rentalDays}</td><td data-label="Income">{formatMoney(row.income)}</td><td data-label="Vehicle costs">{formatMoney(row.costs)}</td><td data-label="Net"><span className={row.net < 0 ? "money-loss" : "money-gain"}>{signedMoney(row.net)}</span>{row.net < 0 && <span className="loss-tag">Loss</span>}</td><td data-label="Margin">{percent(row.margin)}</td><td data-label="Net / rental day">{row.rentalDays ? signedMoney(Math.round(row.net / row.rentalDays)) : "—"}</td></tr>)}
+              {summary.byVehicle.map((row) => <tr key={row.vehicleId}><td data-label="Vehicle"><div className="table-primary"><DrillLink kind="vehicle" id={row.vehicle?.id}>{row.vehicle ? `${row.vehicle.make} ${row.vehicle.model}` : "Removed vehicle"}</DrillLink></div><div className="table-secondary">{row.vehicle?.registration ?? ""}</div></td><td data-label="Rentals">{row.bookings}</td><td data-label="Rental days">{row.rentalDays}</td><td data-label="Income">{formatMoney(row.income)}</td><td data-label="Vehicle costs">{formatMoney(row.costs)}</td><td data-label="Net"><span className={row.net < 0 ? "money-loss" : "money-gain"}>{signedMoney(row.net)}</span>{row.net < 0 && <span className="loss-tag">Loss</span>}</td><td data-label="Margin">{percent(row.margin)}</td><td data-label="Net / rental day">{row.rentalDays ? signedMoney(Math.round(row.net / row.rentalDays)) : "—"}</td></tr>)}
             </tbody></table></div>}
           </section>
         </> : <>
@@ -276,7 +317,7 @@ export function ExpensesWorkspace() {
                 <td data-label="Date">{shortDate(entry.date)}</td>
                 <td data-label="Expense"><div className="table-primary">{record?.payee || entry.description || entry.category}</div>{record?.description && <div className="table-secondary">{record.description}</div>}{entry.source === "maintenance" && <div className="table-secondary">From a completed maintenance job · {entry.description}</div>}</td>
                 <td data-label="Category">{entry.category}</td>
-                <td data-label="Vehicle">{entry.vehicleId ? vehicleLabel(vehicles.find((vehicle) => vehicle.id === entry.vehicleId)) : <span className="table-secondary">General business</span>}</td>
+                <td data-label="Vehicle">{entry.vehicleId ? <DrillLink kind="vehicle" id={vehicles.find((vehicle) => vehicle.id === entry.vehicleId)?.id}>{vehicleLabel(vehicles.find((vehicle) => vehicle.id === entry.vehicleId))}</DrillLink> : <span className="table-secondary">General business</span>}</td>
                 <td data-label="Payment">{record?.paymentMethod ?? "—"}</td>
                 <td data-label="Amount"><strong>{formatMoney(entry.amount)}</strong></td>
                 <td data-label="Actions"><div className="row-actions">{record ? <>{record.receiptDataUrl && <button className="text-action" type="button" onClick={() => setViewingReceipt(record)}>Receipt</button>}<button className="text-action" type="button" onClick={() => { setEditing(record); setDialogOpen(true); }}>Edit</button><button className="text-action text-action-danger" type="button" onClick={() => setDeleting(record)}>Delete</button></> : <Link className="text-action" href="/maintenance">View job</Link>}</div></td>

@@ -54,12 +54,18 @@ export function ClientSignature({
   signature,
   onSignatureChange,
   initialName = "",
+  nameLabel = "Client signatory name",
+  title = "CLIENT SIGNATURE",
+  inputName = "signatoryName",
 }: {
   name: string;
   onNameChange: (name: string) => void;
   signature: string;
   onSignatureChange: (signature: string) => void;
   initialName?: string;
+  nameLabel?: string;
+  title?: string;
+  inputName?: string;
 }) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const drawingRef = useRef(false);
@@ -129,10 +135,10 @@ export function ClientSignature({
   }
 
   return <div className="client-signature form-field-wide">
-    <label className="form-field"><span>Client signatory name</span><input name="signatoryName" autoComplete="name" value={name} onChange={(event) => onNameChange(event.target.value)} placeholder={initialName || "Name of person signing"} required /></label>
+    <label className="form-field"><span>{nameLabel}</span><input name={inputName} autoComplete="name" value={name} onChange={(event) => onNameChange(event.target.value)} placeholder={initialName || "Name of person signing"} required /></label>
     <div className="signature-pad-wrap">
-      <span className="signature-label">CLIENT SIGNATURE <small>Sign using a finger or stylus</small></span>
-      <canvas ref={canvasRef} className="signature-pad" width={960} height={240} aria-label="Client signature area" onPointerDown={startDrawing} onPointerMove={draw} onPointerUp={finishDrawing} onPointerCancel={finishDrawing} />
+      <span className="signature-label">{title} <small>Sign using a finger or stylus</small></span>
+      <canvas ref={canvasRef} className="signature-pad" width={960} height={240} aria-label={`${title.toLowerCase()} area`} onPointerDown={startDrawing} onPointerMove={draw} onPointerUp={finishDrawing} onPointerCancel={finishDrawing} />
       <div className="signature-pad-footer"><span>Signature required</span><button type="button" className="text-action" onClick={clearSignature}>Clear signature</button></div>
     </div>
   </div>;

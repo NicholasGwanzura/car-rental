@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { AppShell, NavIcon, PageTopbar } from "@/components/app-shell";
 import { formatMoney, useRentalData } from "@/lib/rental-data";
+import { useDrilldown } from "@/components/drilldown";
 
 const today = new Intl.DateTimeFormat("en", { weekday: "long", month: "long", day: "numeric", timeZone: "Africa/Harare" }).format(new Date());
 const quickLinks = [
@@ -13,6 +14,7 @@ const quickLinks = [
 
 export function OverviewWorkspace() {
   const { vehicles, bookings, customers, maintenance, ready } = useRentalData();
+  const { open } = useDrilldown();
   const openBookings = bookings.filter((booking) => ["Confirmed", "Active"].includes(booking.status));
   const upcoming = [...openBookings].sort((a, b) => a.startDate.localeCompare(b.startDate)).slice(0, 4);
   const openJobs = maintenance.filter((job) => job.status !== "Completed");
@@ -49,7 +51,7 @@ export function OverviewWorkspace() {
           <article className="panel activity-panel"><div className="panel-heading"><div><p className="eyebrow">NEXT UP</p><h2>Upcoming bookings</h2></div><Link className="quiet-button quiet-link" href="/bookings">All bookings →</Link></div>
             {upcoming.length === 0 ? <div className="activity-empty"><div className="calendar-art" aria-hidden="true"><span className="cal-binding" /><span className="cal-lines" /><span className="cal-sun">✳</span></div><strong>No upcoming rentals</strong><p>Confirmed bookings and active rentals will show here.</p><Link href="/bookings" className="text-link">Create a booking <span aria-hidden="true">→</span></Link></div> : <div className="upcoming-list">{upcoming.map((booking) => {
               const customer = customers.find((item) => item.id === booking.customerId); const vehicle = vehicles.find((item) => item.id === booking.vehicleId);
-              return <Link href="/bookings" className="upcoming-row" key={booking.id}><span className="upcoming-date"><strong>{new Intl.DateTimeFormat("en", { day: "2-digit", timeZone: "Africa/Harare" }).format(new Date(`${booking.startDate}T12:00:00`))}</strong><small>{new Intl.DateTimeFormat("en", { month: "short", timeZone: "Africa/Harare" }).format(new Date(`${booking.startDate}T12:00:00`))}</small></span><span className="upcoming-details"><strong>{customer?.name ?? "Customer"}</strong><small>{vehicle ? `${vehicle.make} ${vehicle.model} · ${vehicle.registration}` : "Vehicle"}</small></span><span className="upcoming-end"><span className={`status-pill status-${booking.status.toLowerCase()}`}>{booking.status}</span><small>{formatMoney(booking.total)}</small></span></Link>;
+              return <button type="button" onClick={() => open({ kind: "booking", id: booking.id })} className="upcoming-row" key={booking.id}><span className="upcoming-date"><strong>{new Intl.DateTimeFormat("en", { day: "2-digit", timeZone: "Africa/Harare" }).format(new Date(`${booking.startDate}T12:00:00`))}</strong><small>{new Intl.DateTimeFormat("en", { month: "short", timeZone: "Africa/Harare" }).format(new Date(`${booking.startDate}T12:00:00`))}</small></span><span className="upcoming-details"><strong>{customer?.name ?? "Customer"}</strong><small>{vehicle ? `${vehicle.make} ${vehicle.model} · ${vehicle.registration}` : "Vehicle"}</small></span><span className="upcoming-end"><span className={`status-pill status-${booking.status.toLowerCase()}`}>{booking.status}</span><small>{formatMoney(booking.total)}</small></span></button>;
             })}</div>}
           </article>
           <article className="panel quick-panel"><div className="panel-heading"><div><p className="eyebrow">SHORTCUTS</p><h2>Quick actions</h2></div></div><div className="quick-list">{quickLinks.map((item) => <Link className="quick-action" key={item.title} href={item.href}><span className="quick-icon" aria-hidden="true"><NavIcon name={item.icon} /></span><span className="quick-copy"><strong>{item.title}</strong><small>{item.detail}</small></span><span className="quick-arrow" aria-hidden="true">↗</span></Link>)}</div><Link className="reports-shortcut" href="/reports"><span><strong>View reports</strong><small>Track rental performance</small></span><span aria-hidden="true">→</span></Link></article>

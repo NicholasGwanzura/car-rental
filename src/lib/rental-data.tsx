@@ -35,6 +35,7 @@ export type Customer = {
   address?: string;
   idPhotoDataUrl?: string;
   idPhotoName?: string;
+  licencePhotoDataUrl?: string;
   createdAt: string;
 };
 
@@ -101,7 +102,9 @@ export type Expense = {
   createdAt: string;
 };
 
-export type InspectionPhoto = { id: string; name: string; dataUrl: string; marks?: InspectionDamageMark[] };
+export type InspectionView = "front" | "rear" | "left" | "right" | "interior" | "other";
+/** A captured photo, or (when `diagram` is set) one of the built-in vehicle line drawings with damage pins. */
+export type InspectionPhoto = { id: string; name: string; dataUrl: string; marks?: InspectionDamageMark[]; view?: InspectionView; diagram?: "front" | "rear" | "left" | "right" };
 export type InspectionCheckStatus = "ok" | "attention" | "na";
 export type InspectionChecklist = Record<string, InspectionCheckStatus>;
 export type PrebookingInspection = {
@@ -119,6 +122,9 @@ export type PrebookingInspection = {
   signatoryName?: string;
   signatureDataUrl?: string;
   signedAt?: string;
+  /** The Classic Rides representative who carried out the inspection and signed for the company. */
+  repName?: string;
+  repSignatureDataUrl?: string;
   photos: InspectionPhoto[];
   createdAt: string;
 };

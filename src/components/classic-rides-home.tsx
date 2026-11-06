@@ -1,6 +1,7 @@
 import Image from "next/image";
 import Link from "next/link";
-import { SiteFooter, SiteHeader } from "@/components/site-chrome";
+import { SiteFooter, SiteHeader, WhatsAppIcon } from "@/components/site-chrome";
+import { whatsappLink } from "@/lib/brand";
 import type { PublicVehicleSummary } from "@/lib/public-vehicles";
 
 const contactNumbers = [
@@ -77,5 +78,5 @@ export function SiteServices({ showHeading = true }: { showHeading?: boolean }) 
 </>; }
 
 export function SiteContact() { return <>
-    <section className="site-contact" id="contact"><div className="site-contact-copy"><span className="site-section-kicker">CONTACT CLASSIC RIDES</span><h2>Request a vehicle.</h2><p>Send your rental dates, preferred vehicle type and pickup location. We’ll reply with availability and a quote.</p><a className="site-button-light" href="mailto:sales@classicrides.online?subject=Classic%20Rides%20booking%20enquiry">Email your request <span aria-hidden="true">→</span></a></div><div className="site-contact-details"><div className="site-email-card"><span className="site-contact-icon" aria-hidden="true">@</span><span><small>OFFICIAL EMAIL</small><a href="mailto:sales@classicrides.online">sales@classicrides.online</a></span></div><div className="site-phone-grid">{contactNumbers.map((number) => <a className="site-phone-card" key={number.tel} href={`tel:${number.tel}`}><span className="site-contact-icon" aria-hidden="true">↗</span><span><small>{number.label}</small><strong>{number.display}</strong></span></a>)}</div><a className="site-domain" href="https://classicrides.online">classicrides.online</a></div></section>
+    <section className="site-contact" id="contact"><div className="site-contact-copy"><span className="site-section-kicker">CONTACT CLASSIC RIDES</span><h2>Request a vehicle.</h2><p>Send your rental dates, preferred vehicle type and pickup location. We’ll reply with availability and a quote.</p><span className="site-contact-buttons"><a className="site-button-whatsapp" href={whatsappLink("Hi Classic Rides, I’d like to rent a car. My dates are: ")} target="_blank" rel="noreferrer"><WhatsAppIcon />WhatsApp us</a><a className="site-button-light" href="mailto:sales@classicrides.online?subject=Classic%20Rides%20booking%20enquiry">Email your request <span aria-hidden="true">→</span></a></span></div><div className="site-contact-details"><div className="site-email-card"><span className="site-contact-icon" aria-hidden="true">@</span><span><small>OFFICIAL EMAIL</small><a href="mailto:sales@classicrides.online">sales@classicrides.online</a></span></div><div className="site-phone-grid">{contactNumbers.map((number) => <a className="site-phone-card" key={number.tel} href={`tel:${number.tel}`}><span className="site-contact-icon" aria-hidden="true">↗</span><span><small>{number.label}</small><strong>{number.display}</strong></span></a>)}</div><a className="site-domain" href="https://classicrides.online">classicrides.online</a></div></section>
 </>; }

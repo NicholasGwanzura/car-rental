@@ -1,6 +1,7 @@
 import { OverviewWorkspace } from "@/components/overview-workspace";
 import { RentalDataProvider } from "@/lib/rental-data";
+import { DrilldownProvider } from "@/components/drilldown";
 
 export default function WorkspacePage() {
-  return <RentalDataProvider><OverviewWorkspace /></RentalDataProvider>;
+  return <RentalDataProvider><DrilldownProvider><OverviewWorkspace /></DrilldownProvider></RentalDataProvider>;
 }

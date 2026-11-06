@@ -2,6 +2,7 @@ import type { Booking, CompanyProfile, Customer, PrebookingInspection, Vehicle }
 import { formatMoney, nightsBetween } from "@/lib/rental-data";
 import { inspectionChecklistItems } from "@/components/inspection-inputs";
 import { BRAND, BRAND_LOGO_SVG, brandedCompany } from "@/lib/brand";
+import { photoLabel, photoSrc } from "@/lib/vehicle-diagrams";
 
 /**
  * Clauses from "Classic_Ride Contract form_101021.docx". Editable in Company settings.
@@ -95,12 +96,12 @@ export function buildContractHtml(input: ContractInput) {
   const kmPerDay = booking.mileageAllowanceKmPerDay ?? vehicle?.mileageAllowanceKmPerDay ?? 0;
   const deposit = booking.depositAmount ?? vehicle?.depositAmount ?? 0;
   const signedDate = longDate(pickup?.signedAt ?? new Date().toISOString());
-  const marks = (pickup?.photos ?? []).flatMap((photo, photoIndex) => (photo.marks ?? []).map((mark, index) => `<li>Photo ${photoIndex + 1}, mark ${index + 1}: <strong>${escapeHtml(mark.type)}</strong>${mark.note ? ` — ${escapeHtml(mark.note)}` : ""}</li>`));
+  const marks = (pickup?.photos ?? []).flatMap((photo) => (photo.marks ?? []).map((mark, index) => `<li>${escapeHtml(photoLabel(photo, pickup?.photos ?? []))}, mark ${index + 1}: <strong>${escapeHtml(mark.type)}</strong>${mark.note ? ` — ${escapeHtml(mark.note)}` : ""}</li>`));
   const checklist = pickup?.checklist ? inspectionChecklistItems.map((item) => {
     const status = pickup.checklist?.[item.key];
     return `<tr><td>${escapeHtml(item.label)}</td><td class="${status === "attention" ? "issue" : ""}">${status === "ok" ? "OK" : status === "attention" ? "Issue / damage" : "N/A"}</td></tr>`;
   }).join("") : "";
-  const photos = (pickup?.photos ?? []).map((photo, index) => `<figure><div class="photo"><img src="${photo.dataUrl}" alt="">${(photo.marks ?? []).map((mark, markIndex) => `<span style="left:${mark.x}%;top:${mark.y}%">${markIndex + 1}</span>`).join("")}</div><figcaption>Photo ${index + 1}</figcaption></figure>`).join("");
+  const photos = (pickup?.photos ?? []).map((photo) => `<figure><div class="photo${photo.diagram ? " diagram" : ""}"><img src="${photoSrc(photo)}" alt="">${(photo.marks ?? []).map((mark, markIndex) => `<span style="left:${mark.x}%;top:${mark.y}%">${markIndex + 1}</span>`).join("")}</div><figcaption>${escapeHtml(photoLabel(photo, pickup?.photos ?? []))}</figcaption></figure>`).join("");
   const appendix = pickup ? `<section class="appendix"><h2>Appendix: vehicle condition at pickup</h2>
 <table class="facts"><tr><th>Booking</th><td>${escapeHtml(booking.reference)}</td><th>Inspection date</th><td>${escapeHtml(longDate(pickup.inspectionDate))}</td></tr><tr><th>Odometer</th><td>${escapeHtml(pickup.odometerKm.toLocaleString())} km</td><th>Fuel</th><td>${escapeHtml(pickup.fuelPercent)}%</td></tr><tr><th>Deposit</th><td>${escapeHtml(formatMoney(deposit))}${booking.depositStatus === "Held" ? " (received)" : ""}</td><th>Rental total</th><td>${escapeHtml(formatMoney(booking.total))}</td></tr></table>
 ${pickup.notes ? `<p><strong>Notes:</strong> ${escapeHtml(pickup.notes)}</p>` : ""}
@@ -140,7 +141,7 @@ table{width:100%;border-collapse:collapse;margin:8px 0}th,td{padding:5px 7px;bor
 .custody{margin-top:18px;font-style:italic}
 .appendix{break-before:page}
 .photos{display:grid;grid-template-columns:repeat(3,1fr);gap:8px}figure{margin:0;break-inside:avoid}.photo{position:relative}.photo img{width:100%;display:block}
-.photo span{position:absolute;transform:translate(-50%,-50%);width:18px;height:18px;border-radius:50%;background:${BRAND.accent};color:#fff;border:2px solid #fff;font:700 10px/1 Arial,sans-serif;display:grid;place-items:center;-webkit-print-color-adjust:exact;print-color-adjust:exact}
+.photo.diagram{border:1px solid #ddd;border-radius:4px}.photo span{position:absolute;transform:translate(-50%,-50%);width:18px;height:18px;border-radius:50%;background:${BRAND.accent};color:#fff;border:2px solid #fff;font:700 10px/1 Arial,sans-serif;display:grid;place-items:center;-webkit-print-color-adjust:exact;print-color-adjust:exact}
 figcaption{font-size:10px;color:#555}
 .toolbar{position:sticky;top:0;display:flex;justify-content:flex-end;margin:-24px -24px 16px;padding:10px 24px;background:#f3f6f4;border-bottom:1px solid #dfe6e1}
 .toolbar button{height:38px;padding:0 16px;border:0;border-radius:8px;background:${BRAND.accent};color:#fff;font:700 13px Arial,sans-serif;cursor:pointer}
@@ -162,7 +163,7 @@ ${renderTerms(terms)}
 <table><thead><tr><th>Make</th><th>Model</th><th>Registration</th><th>Daily Charge (US DOLLARS)</th></tr></thead><tbody><tr><td>${escapeHtml(vehicle?.make ?? "")}</td><td>${escapeHtml(vehicle?.model ?? "")}</td><td>${escapeHtml(vehicle?.registration ?? "")}</td><td>${escapeHtml(formatMoney(dailyRate))} per day · Excess ${escapeHtml(formatMoney(excessRate))} per km · ${escapeHtml(kmPerDay)} km per day</td></tr></tbody></table>
 <p>${escapeHtml(companyName)} Car Rental and the renter agree to the list above and that this vehicle is covered under the general Agreement as signed by both parties and accept the terms above, and agree to be bound by them.</p>
 <div class="signatures">
-<div class="sig"><strong>For &amp; on behalf of ${escapeHtml(companyName)} Car Rental</strong><div class="line"></div><small>Signature/Stamp &nbsp;·&nbsp; Date</small><p>Name ${fill("")}</p></div>
+<div class="sig"><strong>For &amp; on behalf of ${escapeHtml(companyName)} Car Rental</strong><div class="line">${pickup?.repSignatureDataUrl ? `<img src="${pickup.repSignatureDataUrl}" alt="Representative signature">` : ""}</div><small>Signature/Stamp &nbsp;·&nbsp; ${pickup?.repSignatureDataUrl ? escapeHtml(signedDate) : "Date"}</small><p>Name ${fill(pickup?.repName ?? "")}</p></div>
 <div class="sig"><strong>For &amp; on behalf of ${escapeHtml(renter || "the renter")}</strong><div class="line">${pickup?.signatureDataUrl ? `<img src="${pickup.signatureDataUrl}" alt="Renter signature">` : ""}</div><small>Signature &nbsp;·&nbsp; ${escapeHtml(signedDate)}</small><p>Name ${fill(pickup?.signatoryName || renter)}</p></div>
 </div>
 <p>Residential Address ${fill(customer?.address)}</p>

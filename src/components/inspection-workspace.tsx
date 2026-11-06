@@ -1,11 +1,13 @@
 "use client";
+/* eslint-disable @next/next/no-img-element -- inspection photos and signatures are local data URLs; damage pins need the plain <img> box. */
 
 import Link from "next/link";
 import { useMemo, useState, type FormEvent } from "react";
 import { AppShell, PageTopbar } from "@/components/app-shell";
 import { WorkspaceDialog } from "@/components/workspace-dialog";
+import { DrillLink } from "@/components/drilldown";
 import { ClientSignature, InspectionChecklistFields, inspectionChecklistItems } from "@/components/inspection-inputs";
-import { DamageList, DamagePins, InspectionPhotoField, countDamageMarks } from "@/components/inspection-photos";
+import { InspectionPhotoField, InspectionPhotoGallery, countDamageMarks, countRealPhotos, finalizePhotos } from "@/components/inspection-photos";
 import { useRentalData, type InspectionChecklist, type InspectionPhoto, type PrebookingInspection } from "@/lib/rental-data";
 
 function localDateValue() {
@@ -21,17 +23,8 @@ function inspectionTitle(item: PrebookingInspection, customerName: string, vehic
   return `${customerName} · ${vehicleName}`;
 }
 
-function PhotoGrid({ photos }: { photos: InspectionPhoto[] }) {
-  if (!photos.length) return <p className="inspection-no-photos">No photos attached.</p>;
-  const marked = photos.filter((photo) => photo.marks?.length);
-  return <>
-    <div className="inspection-photo-grid">{photos.map((photo, index) => <a className="inspection-photo" key={photo.id} href={photo.dataUrl} target="_blank" rel="noreferrer" aria-label={`Open inspection photo ${index + 1}: ${photo.name}`}><img src={photo.dataUrl} alt={`Inspection ${index + 1}: ${photo.name}`} /><DamagePins marks={photo.marks} /><span>{index + 1}</span></a>)}</div>
-    {marked.length > 0 && <div className="inspection-damage-summary"><span>MARKED DAMAGE</span>{marked.map((photo) => <div key={photo.id}><small>Photo {photos.indexOf(photo) + 1}</small><DamageList marks={photo.marks} /></div>)}</div>}
-  </>;
-}
-
 export function InspectionWorkspace() {
-  const { inspections, customers, vehicles, bookings, addInspection, ready } = useRentalData();
+  const { inspections, customers, vehicles, bookings, addInspection, ready, currentUser, company } = useRentalData();
   const [open, setOpen] = useState(false);
   const [selectedId, setSelectedId] = useState("");
   const [customerId, setCustomerId] = useState("");
@@ -43,27 +36,30 @@ export function InspectionWorkspace() {
   const [checklist, setChecklist] = useState<InspectionChecklist>({});
   const [signature, setSignature] = useState("");
   const [signatoryName, setSignatoryName] = useState("");
+  const [repName, setRepName] = useState(currentUser?.name ?? "");
+  const [repSignature, setRepSignature] = useState("");
 
   const sorted = useMemo(() => [...inspections].sort((a, b) => b.inspectionDate.localeCompare(a.inspectionDate) || b.createdAt.localeCompare(a.createdAt)), [inspections]);
   const selected = sorted.find((item) => item.id === selectedId);
   const matchingBookings = bookings.filter((booking) => booking.customerId === customerId && booking.vehicleId === vehicleId);
 
   function resetForm() {
-    setOpen(false); setCustomerId(""); setVehicleId(""); setBookingId(""); setPhotos([]); setError(""); setChecklist({}); setSignature(""); setSignatoryName("");
+    setOpen(false); setCustomerId(""); setVehicleId(""); setBookingId(""); setPhotos([]); setError(""); setChecklist({}); setSignature(""); setSignatoryName(""); setRepSignature(""); setRepName(currentUser?.name ?? "");
   }
 
   function save(event: FormEvent<HTMLFormElement>) {
     event.preventDefault(); setError("");
-    if (!photos.length) { setError("Add at least one photo to complete the inspection."); return; }
+    if (!countRealPhotos(photos)) { setError("Add at least one photo to complete the inspection."); return; }
     if (inspectionChecklistItems.some((item) => !checklist[item.key])) { setError("Complete every checklist item before saving the inspection."); return; }
     if (!signature || !signatoryName.trim()) { setError("Enter the client name and capture their signature."); return; }
+    if (!repSignature || !repName.trim()) { setError(`Enter the ${company.name || "Classic Rides"} representative’s name and signature.`); return; }
     const form = new FormData(event.currentTarget);
     const created = addInspection({
       customerId: String(form.get("customerId")), vehicleId: String(form.get("vehicleId")),
       ...(bookingId ? { bookingId } : {}), stage: "Pre-booking", inspectionDate: String(form.get("inspectionDate")),
       odometerKm: Number(form.get("odometerKm")), fuelPercent: Number(form.get("fuelPercent")),
       condition: String(form.get("condition")) as PrebookingInspection["condition"],
-      notes: String(form.get("notes")).trim(), photos: photos.map((photo) => ({ ...photo, marks: (photo.marks ?? []).map((mark) => ({ ...mark, note: mark.note?.trim() || undefined })) })), checklist, signatoryName: signatoryName.trim(), signatureDataUrl: signature, signedAt: new Date().toISOString(),
+      notes: String(form.get("notes")).trim(), photos: finalizePhotos(photos), checklist, signatoryName: signatoryName.trim(), signatureDataUrl: signature, signedAt: new Date().toISOString(), repName: repName.trim(), repSignatureDataUrl: repSignature,
     });
     setSelectedId(created.id);
     setSaved(true); window.setTimeout(() => setSaved(false), 3500); resetForm();
@@ -85,18 +81,18 @@ export function InspectionWorkspace() {
             return <button className={`inspection-record${selected?.id === item.id ? " is-selected" : ""}`} type="button" key={item.id} onClick={() => setSelectedId(item.id)} aria-pressed={selected?.id === item.id}>
               <span className="inspection-record-icon"><svg viewBox="0 0 24 24"><path d="M8 4.5h8a2 2 0 0 1 2 2V20H6V6.5a2 2 0 0 1 2-2Z"/><path d="M9 10h6m-6 3.5h6"/></svg></span>
               <span className="inspection-record-copy"><strong>{inspectionTitle(item, renterName, carName)}</strong><small>{formatInspectionDate(item.inspectionDate)}{item.bookingId ? ` · ${bookings.find((booking) => booking.id === item.bookingId)?.reference ?? "Linked booking"}` : " · Pre-booking"}</small></span>
-              <span className="inspection-record-meta"><span className={`status-pill ${item.condition === "Needs attention" ? "status-cancelled" : item.condition === "Fair" ? "status-active" : "status-available"}`}>{item.condition}</span><small>{item.photos.length} {item.photos.length === 1 ? "photo" : "photos"}{countDamageMarks(item.photos) ? ` · ${countDamageMarks(item.photos)} marked` : ""}</small></span>
+              <span className="inspection-record-meta"><span className={`status-pill ${item.condition === "Needs attention" ? "status-cancelled" : item.condition === "Fair" ? "status-active" : "status-available"}`}>{item.condition}</span><small>{countRealPhotos(item.photos)} {countRealPhotos(item.photos) === 1 ? "photo" : "photos"}{countDamageMarks(item.photos) ? ` · ${countDamageMarks(item.photos)} marked` : ""}</small></span>
             </button>;
           })}</div>
         </section>
         {selected && <section className="inspection-detail panel"><div className="panel-heading"><div><p className="eyebrow">INSPECTION DETAIL</p><h2>{customers.find((item) => item.id === selected.customerId)?.name ?? "Customer"}</h2></div><span className="status-pill status-confirmed">{selected.condition}</span></div>
-          <div className="inspection-linked-records"><div><span>CUSTOMER</span><strong>{customers.find((item) => item.id === selected.customerId)?.name ?? "Customer unavailable"}</strong><small>{customers.find((item) => item.id === selected.customerId)?.phone ?? ""}</small></div><div><span>VEHICLE</span><strong>{vehicles.find((item) => item.id === selected.vehicleId)?.registration ?? "Vehicle unavailable"}</strong><small>{(() => { const v = vehicles.find((item) => item.id === selected.vehicleId); return v ? `${v.make} ${v.model}` : ""; })()}</small></div></div>
+          <div className="inspection-linked-records"><div><span>CUSTOMER</span><strong><DrillLink kind="customer" id={customers.find((item) => item.id === selected.customerId)?.id}>{customers.find((item) => item.id === selected.customerId)?.name ?? "Customer unavailable"}</DrillLink></strong><small>{customers.find((item) => item.id === selected.customerId)?.phone ?? ""}</small></div><div><span>VEHICLE</span><strong><DrillLink kind="vehicle" id={vehicles.find((item) => item.id === selected.vehicleId)?.id}>{vehicles.find((item) => item.id === selected.vehicleId)?.registration ?? "Vehicle unavailable"}</DrillLink></strong><small>{(() => { const v = vehicles.find((item) => item.id === selected.vehicleId); return v ? `${v.make} ${v.model}` : ""; })()}</small></div></div>
           <div className="inspection-facts"><span><small>INSPECTION DATE</small><strong>{formatInspectionDate(selected.inspectionDate)}</strong></span><span><small>ODOMETER</small><strong>{selected.odometerKm.toLocaleString()} km</strong></span><span><small>FUEL</small><strong>{selected.fuelPercent}%</strong></span></div>
           {selected.checklist && <div className="inspection-saved-checklist"><span>VEHICLE CHECKLIST</span>{inspectionChecklistItems.map((entry) => <div key={entry.key}><span>{entry.label}</span><strong>{selected.checklist?.[entry.key] === "ok" ? "OK" : selected.checklist?.[entry.key] === "attention" ? "Issue" : "N/A"}</strong></div>)}</div>}
-          {selected.signatureDataUrl && <div className="inspection-saved-signature"><span>SIGNED BY {selected.signatoryName || "CLIENT"}</span><img src={selected.signatureDataUrl} alt={`Signature from ${selected.signatoryName || "client"}`} /></div>}
+          {(selected.signatureDataUrl || selected.repSignatureDataUrl) && <div className="inspection-signatures">{selected.signatureDataUrl && <div className="inspection-saved-signature"><span>CLIENT · {selected.signatoryName || "CLIENT"}</span><img src={selected.signatureDataUrl} alt={`Signature from ${selected.signatoryName || "client"}`} /></div>}{selected.repSignatureDataUrl && <div className="inspection-saved-signature"><span>{(company.name || "Classic Rides").toUpperCase()} · {selected.repName || "REPRESENTATIVE"}</span><img src={selected.repSignatureDataUrl} alt={`Signature from ${selected.repName || "representative"}`} /></div>}</div>}
           <div className="inspection-notes"><span>CONDITION NOTES</span><p>{selected.notes || "No additional notes."}</p></div>
-          {selected.bookingId && <p className="inspection-booking-link">Linked booking: {bookings.find((booking) => booking.id === selected.bookingId)?.reference ?? "Booking"}</p>}
-          <PhotoGrid photos={selected.photos} />
+          {selected.bookingId && <p className="inspection-booking-link">Linked booking: <DrillLink kind="booking" id={bookings.find((booking) => booking.id === selected.bookingId)?.id}>{bookings.find((booking) => booking.id === selected.bookingId)?.reference ?? "Booking"}</DrillLink></p>}
+          <InspectionPhotoGallery photos={selected.photos} />
         </section>}
       </div>}
     </main>
@@ -112,6 +108,7 @@ export function InspectionWorkspace() {
         <label className="form-field form-field-wide"><span>Condition notes</span><textarea name="notes" rows={3} placeholder="Describe existing damage, cleanliness, or other notes." /></label>
         <InspectionChecklistFields value={checklist} onChange={setChecklist} />
         <ClientSignature name={signatoryName} onNameChange={setSignatoryName} signature={signature} onSignatureChange={setSignature} initialName={customers.find((customer) => customer.id === customerId)?.name ?? ""} />
+        <ClientSignature name={repName} onNameChange={setRepName} signature={repSignature} onSignatureChange={setRepSignature} initialName={currentUser?.name ?? ""} nameLabel={`${company.name || "Classic Rides"} representative`} title="REPRESENTATIVE SIGNATURE" inputName="repName" />
         <InspectionPhotoField photos={photos} onChange={setPhotos} required />
         {error && <p className="form-error form-field-wide" role="alert">{error}</p>}
         <p className="form-hint form-field-wide">This inspection stays attached to the selected customer and vehicle. Photos are saved with the workspace record.</p>

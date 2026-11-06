@@ -1,6 +1,7 @@
 "use client";
 
-import { useEffect, useRef, type KeyboardEvent, type ReactNode } from "react";
+import { useEffect, useId, useRef, type KeyboardEvent, type ReactNode } from "react";
+import { createPortal } from "react-dom";
 
 const focusableSelector = [
   "input:not([type=hidden]):not(:disabled)",
@@ -24,6 +25,7 @@ export function WorkspaceDialog({
   children: ReactNode;
 }) {
   const dialogRef = useRef<HTMLElement>(null);
+  const titleId = useId();
   const closeRef = useRef(onClose);
   useEffect(() => { closeRef.current = onClose; }, [onClose]);
 
@@ -40,6 +42,8 @@ export function WorkspaceDialog({
   }, []);
 
   function handleKeyDown(event: KeyboardEvent<HTMLElement>) {
+    // Keep keys inside this dialog, so a dialog opened from another one doesn't also close or trap its parent.
+    event.stopPropagation();
     if (event.key === "Escape") {
       event.preventDefault();
       closeRef.current();
@@ -68,13 +72,15 @@ export function WorkspaceDialog({
     }
   }
 
-  return <div className="modal-backdrop" onMouseDown={(event) => { if (event.target === event.currentTarget) closeRef.current(); }}>
-    <section ref={dialogRef} className={`form-modal ${className}`.trim()} role="dialog" aria-modal="true" aria-labelledby="workspace-dialog-title" tabIndex={-1} onKeyDown={handleKeyDown}>
+  const dialog = <div className="modal-backdrop" onMouseDown={(event) => { event.stopPropagation(); if (event.target === event.currentTarget) closeRef.current(); }}>
+    <section ref={dialogRef} className={`form-modal ${className}`.trim()} role="dialog" aria-modal="true" aria-labelledby={titleId} tabIndex={-1} onKeyDown={handleKeyDown}>
       <div className="modal-heading">
-        <div><p className="eyebrow">{eyebrow}</p><h2 id="workspace-dialog-title">{title}</h2></div>
+        <div><p className="eyebrow">{eyebrow}</p><h2 id={titleId}>{title}</h2></div>
         <button type="button" className="modal-close" onClick={() => closeRef.current()} aria-label="Close dialog">×</button>
       </div>
       {children}
     </section>
   </div>;
+  // Rendered at the document root so stacked dialogs are positioned against the viewport.
+  return typeof document === "undefined" ? dialog : createPortal(dialog, document.body);
 }

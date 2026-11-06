@@ -31,3 +31,11 @@ export function brandedCompany(company: Partial<CompanyProfile> | undefined): Br
     website: BRAND.website,
   };
 }
+
+/** WhatsApp number for enquiries and pre-booking requests (international format, digits only). */
+export const WHATSAPP_NUMBER = "263772313286";
+export const WHATSAPP_DISPLAY = "+263 772 313 286";
+
+export function whatsappLink(text?: string) {
+  return `https://wa.me/${WHATSAPP_NUMBER}${text ? `?text=${encodeURIComponent(text)}` : ""}`;
+}
