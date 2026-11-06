@@ -725,3 +725,15 @@ button:focus-visible,a:focus-visible,select:focus-visible,input:focus-visible,te
 .site-install-button:hover{border-color:#d95712;background:#d95712}
 @media(max-width:640px){.fleet-vehicle-thumb{width:56px;height:44px}.fleet-image-current{flex-wrap:wrap}.public-vehicle-photo.vehicle-has-photo{min-height:260px}}
 @media(max-width:640px){.site-install-button{min-height:32px;padding:0 8px;font-size:11px}.site-nav:has(.site-install-button){gap:6px}}
+/* Public hero: one clear action, real fleet imagery, and readable service facts. */
+.site-hero{grid-template-columns:minmax(0,.92fr) minmax(0,1.08fr);gap:42px;padding-top:58px;padding-bottom:68px}
+.site-eyebrow{color:#000;font-size:11px;letter-spacing:1.2px}
+.site-hero h1{max-width:550px;margin:20px 0 19px;font-size:clamp(42px,5vw,64px);line-height:1.05;letter-spacing:-2.5px}
+.site-hero-intro{max-width:510px;color:#515151;font-size:17px;line-height:1.6}
+.site-hero-actions{margin-top:28px}
+.site-hero-visual{padding:0}
+.site-hero-visual:before{display:none}
+.site-hero-visual>img{max-height:480px;aspect-ratio:1.25;border:0;border-radius:14px;box-shadow:0 12px 35px rgba(0,0,0,.1)}
+.site-proof{flex-wrap:wrap;gap:8px;margin-top:31px;padding-top:17px;border-top:1px solid #e7e7e7;color:#555;font-size:12px;font-weight:600}
+.site-proof span:nth-child(even){color:#f36b21}
+@media(max-width:640px){.site-hero{grid-template-columns:1fr;gap:28px;padding-top:35px;padding-bottom:44px}.site-hero h1{margin:15px 0;font-size:clamp(39px,10vw,52px);letter-spacing:-1.8px}.site-hero-intro{font-size:15px;line-height:1.6}.site-hero-visual{padding:0}.site-hero-visual>img{aspect-ratio:1.2;border:0;border-radius:11px}.site-proof{gap:7px;margin-top:23px;font-size:11px}}
