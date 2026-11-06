@@ -23,6 +23,8 @@ async function ensureTable() {
     await pool().query(`CREATE TABLE IF NOT EXISTS "RentalPrebookingRequest" ("id" TEXT PRIMARY KEY, "vehicleId" TEXT NOT NULL, "status" TEXT NOT NULL DEFAULT 'New', "payload" JSONB NOT NULL, "createdAt" TIMESTAMPTZ NOT NULL DEFAULT NOW())`);
     await pool().query(`CREATE TABLE IF NOT EXISTS "WorkspaceUser" ("id" TEXT PRIMARY KEY, "email" TEXT NOT NULL UNIQUE, "name" TEXT NOT NULL, "passwordHash" TEXT NOT NULL, "role" TEXT NOT NULL CHECK ("role" IN ('super_admin','manager','sales')), "active" BOOLEAN NOT NULL DEFAULT TRUE, "createdAt" TIMESTAMPTZ NOT NULL DEFAULT NOW())`);
     await pool().query(`CREATE TABLE IF NOT EXISTS "WorkspaceSession" ("tokenHash" TEXT PRIMARY KEY, "userId" TEXT NOT NULL REFERENCES "WorkspaceUser"("id") ON DELETE CASCADE, "expiresAt" TIMESTAMPTZ NOT NULL, "createdAt" TIMESTAMPTZ NOT NULL DEFAULT NOW())`);
+    await pool().query(`CREATE TABLE IF NOT EXISTS "WorkspaceAuditLog" ("id" TEXT PRIMARY KEY, "at" TIMESTAMPTZ NOT NULL DEFAULT NOW(), "userId" TEXT, "userName" TEXT NOT NULL, "userRole" TEXT NOT NULL, "entity" TEXT NOT NULL, "entityId" TEXT NOT NULL, "action" TEXT NOT NULL, "summary" TEXT NOT NULL, "changes" JSONB NOT NULL DEFAULT '[]'::jsonb)`);
+    await pool().query(`CREATE INDEX IF NOT EXISTS "WorkspaceAuditLog_at_idx" ON "WorkspaceAuditLog" ("at" DESC)`);
     await pool().query(`CREATE TABLE IF NOT EXISTS "WorkspaceInvite" ("id" TEXT PRIMARY KEY, "tokenHash" TEXT NOT NULL UNIQUE, "email" TEXT NOT NULL, "role" TEXT NOT NULL CHECK ("role" IN ('manager','sales')), "invitedBy" TEXT NOT NULL REFERENCES "WorkspaceUser"("id"), "expiresAt" TIMESTAMPTZ NOT NULL, "acceptedAt" TIMESTAMPTZ, "createdAt" TIMESTAMPTZ NOT NULL DEFAULT NOW())`);
   }).catch((error) => {
     globalForPool.rentalWorkspaceSchema = undefined;
@@ -200,8 +202,9 @@ export async function listWorkspaceTeam() {
 }
 
 export type PublicPrebookingRequest = {
-  id: string; vehicleId: string; customerName: string; email: string; phone: string;
-  driverLicence: string; startDate: string; endDate: string; message: string;
+  id: string; vehicleId: string; customerName: string; phone: string;
+  /** Optional fields kept for older requests; the public form only asks for name and phone. */
+  email?: string; driverLicence?: string; startDate?: string; endDate?: string; message?: string;
   status: "New" | "Contacted" | "Accepted" | "Declined"; createdAt: string;
 };
 
@@ -222,4 +225,36 @@ export async function updatePublicPrebookingStatus(id: string, status: PublicPre
   await ensureTable();
   const result = await pool().query<{ payload: PublicPrebookingRequest }>(`UPDATE "RentalPrebookingRequest" SET "status" = $2, "payload" = jsonb_set("payload", '{status}', to_jsonb($2::text)) WHERE "id" = $1 RETURNING "payload"`, [id, status]);
   return result.rows[0]?.payload ?? null;
+}
+
+export type AuditLogEntry = { id: string; at: string; userId: string | null; userName: string; userRole: string; entity: string; entityId: string; action: string; summary: string; changes: { field: string; from?: string; to?: string }[] };
+
+/** Appends audit entries for one person. Never throws: a logging failure must not fail the user's action. */
+export async function recordAuditEntries(user: { id: string | null; name: string; role: string }, entries: { entity: string; entityId: string; action: string; summary: string; changes?: unknown[] }[]) {
+  if (!entries.length) return;
+  try {
+    await ensureTable();
+    const values: unknown[] = [];
+    const rows = entries.slice(0, 200).map((entry, index) => {
+      values.push(randomUUID(), user.id, user.name, user.role, entry.entity, entry.entityId, entry.action, entry.summary.slice(0, 300), JSON.stringify(entry.changes ?? []));
+      const placeholders = Array.from({ length: 9 }, (_, column) => `$${index * 9 + column + 1}`);
+      placeholders[8] += "::jsonb";
+      return `(${placeholders.join(",")})`;
+    });
+    await pool().query(`INSERT INTO "WorkspaceAuditLog" ("id","userId","userName","userRole","entity","entityId","action","summary","changes") VALUES ${rows.join(",")}`, values);
+  } catch (error) {
+    console.error("Audit log write failed", error instanceof Error ? error.message : error);
+  }
+}
+
+export async function listAuditEntries({ before, limit = 100, entity, userId }: { before?: string; limit?: number; entity?: string; userId?: string }) {
+  await ensureTable();
+  const where: string[] = [];
+  const values: unknown[] = [];
+  if (before) { values.push(before); where.push(`"at" < $${values.length}::timestamptz`); }
+  if (entity) { values.push(entity); where.push(`"entity" = $${values.length}`); }
+  if (userId) { values.push(userId); where.push(`"userId" = $${values.length}`); }
+  values.push(Math.min(Math.max(limit, 1), 200));
+  const result = await pool().query<Omit<AuditLogEntry, "at"> & { at: Date }>(`SELECT "id","at","userId","userName","userRole","entity","entityId","action","summary","changes" FROM "WorkspaceAuditLog" ${where.length ? `WHERE ${where.join(" AND ")}` : ""} ORDER BY "at" DESC LIMIT $${values.length}`, values);
+  return result.rows.map((row) => ({ ...row, at: new Date(row.at).toISOString() }));
 }

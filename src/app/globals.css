@@ -1208,3 +1208,47 @@ button.upcoming-row .upcoming-details{text-align:left}
 .stat-drill .stat-number{display:block}
 .stat-drill-hint{margin:2px 0 6px;color:#1f715e;font-size:11px;font-weight:700;opacity:.75}
 .stat-card.is-drillable:hover .stat-drill-hint{opacity:1}
+
+/* Activity / audit log */
+.activity-days{display:grid;gap:22px}
+.activity-day h2{position:sticky;top:62px;z-index:1;margin:0 0 8px;padding:6px 0;background:var(--wash);color:var(--muted);font-size:12px;font-weight:800;letter-spacing:.8px;text-transform:uppercase}
+.activity-list{display:grid;gap:8px;margin:0;padding:0;list-style:none}
+.activity-item{display:grid;grid-template-columns:36px 1fr auto;gap:12px;align-items:start;padding:12px 14px;border:1px solid var(--line);border-radius:12px;background:#fff}
+.activity-icon{display:grid;place-items:center;width:36px;height:36px;border-radius:10px;background:#eef3ef;color:#1f715e;font-size:15px;font-weight:800}
+.activity-deleted .activity-icon{background:#fbeceb;color:#a94740}
+.activity-created .activity-icon{background:#e7f3ec}
+.activity-body{min-width:0}
+.activity-body p{margin:0;font-size:13px;line-height:1.5}
+.activity-role{margin-left:4px;padding:1px 7px;border-radius:999px;background:#f1f3f2;color:#5e6a63;font-size:11px;font-weight:700}
+.activity-summary{color:#26332d}
+.activity-summary .drill-link{color:#1f715e;font-weight:600}
+.activity-item time{color:var(--muted);font-size:12px;font-variant-numeric:tabular-nums;white-space:nowrap}
+.activity-toggle{margin-top:4px;padding:0;border:0;background:none;color:#1f715e;font-size:12px;font-weight:700;cursor:pointer}
+.activity-changes{display:grid;gap:3px;margin:6px 0 0;padding:8px 10px;border-radius:8px;background:#f8faf9;list-style:none;font-size:12px}
+.activity-changes li{display:flex;flex-wrap:wrap;gap:6px;align-items:baseline}
+.activity-changes li>span{min-width:110px;color:var(--muted);font-weight:700}
+.activity-changes s{color:#a94740}
+.activity-changes b{color:#1d6b42}
+.activity-more{display:flex;justify-content:center;margin:18px 0}
+@media(max-width:580px){.activity-item{grid-template-columns:30px 1fr;padding:10px}.activity-icon{width:30px;height:30px;font-size:13px}.activity-item time{grid-column:2;grid-row:1;justify-self:end}.activity-body{grid-column:1/-1}.activity-day h2{top:54px}}
+
+/* Odometer reading and photo (pickup / return) */
+.odometer-field{display:grid;gap:10px}
+.odometer-field>.form-field input{font-size:15px;font-weight:700;font-variant-numeric:tabular-nums;letter-spacing:.4px}
+.odometer-warning{margin:0;padding:9px 12px;border:1px solid #ead9a8;border-radius:8px;background:#fdf7e4;color:#8a6410;font-size:11px;font-weight:600}
+.odometer-photo{display:grid;gap:6px}
+.odometer-photo-label{display:flex;flex-wrap:wrap;gap:2px 8px;justify-content:space-between;align-items:baseline;color:#68756d;font-size:11px;font-weight:600}
+.odometer-photo-label small{color:#8e9992;font-weight:500}
+.odometer-photo-preview{display:flex;align-items:center;gap:10px;padding:8px;border:1px solid #e3e9e5;border-radius:9px;background:#fbfcfb}
+.odometer-photo-preview img{width:64px;height:64px;object-fit:cover;border-radius:6px;border:1px solid #e5ebe6}
+.odometer-photo-preview .button-quiet{position:relative;overflow:hidden}
+.odometer-photo-preview .button-quiet input{position:absolute;inset:0;opacity:0;cursor:pointer}
+.odometer-capture{position:relative;min-height:64px;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:4px;padding:11px;border:1px dashed #cfdad1;border-radius:9px;background:#fbfcfb;color:#3e765f;text-align:center;cursor:pointer}
+.odometer-capture:hover{border-color:#7caa8b;background:#f6faf6}
+.odometer-capture input{position:absolute;inset:0;width:100%;height:100%;opacity:0;cursor:pointer}
+.odometer-capture svg{width:20px;height:20px;fill:none;stroke:currentColor;stroke-width:1.6;stroke-linecap:round;stroke-linejoin:round}
+.odometer-capture strong{font-size:11px}
+.odometer-capture.is-busy{opacity:.65;pointer-events:none}
+.inspection-odometer-photo{display:grid;gap:6px;margin-top:10px}
+.inspection-odometer-photo span{color:var(--muted);font-size:11px;font-weight:800;letter-spacing:.6px}
+.inspection-odometer-photo img{width:100%;max-width:320px;max-height:240px;object-fit:cover;border:1px solid var(--line);border-radius:10px}

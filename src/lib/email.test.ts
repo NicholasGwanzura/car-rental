@@ -75,4 +75,12 @@ describe("branded templates", () => {
     expect(alert.subject).toBe("New pre-booking: Rudo · 2023 Toyota Corolla Cross");
     expect(alert.html).toContain("https://wa.me/263771234567");
   });
+
+  it("builds a pre-booking alert from name and phone only", () => {
+    const alert = prebookingAlertEmail({ company: undefined, reference: "CD34", vehicleName: "2019 Honda Fit", customerName: "Tariro", phone: "+263 78 555 1234", workspaceUrl: "https://classicrides.online/bookings" });
+    expect(alert.subject).toBe("New pre-booking: Tariro · 2019 Honda Fit");
+    expect(alert.text).toContain("Phone: +263 78 555 1234");
+    expect(alert.text).toContain("No dates requested — call to confirm availability");
+    expect(alert.html).not.toContain("Driver licence");
+  });
 });

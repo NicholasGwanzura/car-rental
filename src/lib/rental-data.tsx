@@ -117,6 +117,8 @@ export type PrebookingInspection = {
   stage?: "Pre-booking" | "Pickup" | "Return";
   inspectionDate: string;
   odometerKm: number;
+  /** Photo of the dashboard odometer showing the recorded reading. */
+  odometerPhotoDataUrl?: string;
   fuelPercent: number;
   condition: "Good" | "Fair" | "Needs attention";
   notes: string;

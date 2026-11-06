@@ -26,7 +26,7 @@ export function canManageTeam(role: WorkspaceRole) {
 }
 
 export function canInviteRole(role: WorkspaceRole, invitedRole: string) {
-  return role === "super_admin" ? invitedRole === "manager" || invitedRole === "sales" : role === "manager" && invitedRole === "sales";
+  return (role === "super_admin" || role === "manager") && (invitedRole === "manager" || invitedRole === "sales");
 }
 
 export const workspaceCookieOptions = {

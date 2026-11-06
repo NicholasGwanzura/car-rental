@@ -15,6 +15,7 @@ const navigation = [
   { label: "Reports", href: "/reports", icon: "reports" },
   { label: "Billing", href: "/billing", icon: "billing" },
   { label: "Expenses", href: "/expenses", icon: "expenses" },
+  { label: "Activity", href: "/activity", icon: "activity" },
   { label: "Team access", href: "/team", icon: "team" },
   { label: "Company settings", href: "/settings", icon: "settings" },
 ];
@@ -29,6 +30,7 @@ export function NavIcon({ name }: { name: string }) {
     inspections: <><path d="M8 4.5h8a2 2 0 0 1 2 2V20H6V6.5a2 2 0 0 1 2-2Z"/><path d="M9 4.5V3h6v1.5M9 10h6m-6 3.5h6m-6 3.5h3"/></>,
     maintenance: <><path d="M14 6.5a4 4 0 0 0-5.2 5.2l-5.1 5.1a2 2 0 0 0 2.8 2.8l5.1-5.1A4 4 0 0 0 16.8 9l-2.5 2.5-2.8-2.8z"/><path d="m15 4 5 5"/></>,
     reports: <><path d="M4 19V5m0 14h16"/><path d="m7 15 4-4 3 2 5-6"/><path d="M16 7h3v3"/></>,
+    activity: <><circle cx="12" cy="12" r="8.5"/><path d="M12 7.5V12l3 2"/></>,
     expenses: <><path d="M6 3.5h12v17l-2-1.4-2 1.4-2-1.4-2 1.4-2-1.4-2 1.4z"/><path d="M9 8h6m-6 3.5h6m-6 3.5h3.5"/></>,
     billing: <><rect x="3.5" y="5" width="17" height="14" rx="2.5"/><path d="M3.5 9.5h17M7 14h4m2.5 0H17"/></>,
     settings: <><path d="M12 8.2a3.8 3.8 0 1 0 0 7.6 3.8 3.8 0 0 0 0-7.6Z"/><path d="m19.4 13.5 1.1.8-1.2 2.1-1.3-.5a7.8 7.8 0 0 1-1.5.9l-.2 1.4h-2.5l-.3-1.4a7.8 7.8 0 0 1-1.6 0l-.8 1.2-2.2-1.2.5-1.3a7.8 7.8 0 0 1-.9-1.5l-1.4-.2v-2.5l1.4-.3a7.8 7.8 0 0 1 .1-1.6l-1.2-.8 1.2-2.2 1.3.5a7.8 7.8 0 0 1 1.5-.9l.2-1.4h2.5l.3 1.4a7.8 7.8 0 0 1 1.6.1l.8-1.2 2.2 1.2-.5 1.3a7.8 7.8 0 0 1 .9 1.5l1.4.2v2.5l-1.4.3a7.8 7.8 0 0 1 0 1.6Z"/></>,
@@ -47,7 +49,7 @@ export function AppShell({ children, active = "Overview" }: { children: ReactNod
   const { currentUser } = useRentalData();
   const visibleNavigation = navigation.filter((item) => {
     if (item.label === "Company settings") return currentUser?.role === "super_admin";
-    if (item.label === "Team access") return currentUser?.role === "super_admin" || currentUser?.role === "manager";
+    if (item.label === "Team access" || item.label === "Activity") return currentUser?.role === "super_admin" || currentUser?.role === "manager";
     if (["Maintenance", "Reports", "Expenses"].includes(item.label)) return currentUser?.role !== "sales";
     return true;
   });

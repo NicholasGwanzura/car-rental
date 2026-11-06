@@ -8,8 +8,10 @@ import { BillingWorkspace } from "@/components/billing-workspace";
 import { CompanySettingsWorkspace } from "@/components/company-settings-workspace";
 import { InspectionWorkspace } from "@/components/inspection-workspace";
 import { ExpensesWorkspace } from "@/components/expenses-workspace";
+import { ActivityWorkspace } from "@/components/activity-workspace";
 import { ClientSignature, InspectionChecklistFields, checklistDeclaration, inspectionChecklistItems } from "@/components/inspection-inputs";
 import { InspectionPhotoField, countDamageMarks, countRealPhotos, finalizePhotos } from "@/components/inspection-photos";
+import { OdometerField, lastOdometerReading, parseOdometer, validateOdometer } from "@/components/odometer-field";
 import { WorkspaceDialog } from "@/components/workspace-dialog";
 import { DrillLink } from "@/components/drilldown";
 import { CustomerDialog } from "@/components/customer-dialog";
@@ -194,7 +196,7 @@ function CustomerWorkspace() {
 }
 
 function BookingLifecycleDialog({ booking, action, onClose, onStarted }: { booking: Booking; action: "checkout" | "return"; onClose: () => void; onStarted?: (bookingId: string) => void }) {
-  const { customers, vehicles, inspections, addInspection, updateBooking, currentUser, company } = useRentalData();
+  const { customers, vehicles, bookings, inspections, addInspection, updateBooking, currentUser, company } = useRentalData();
   const isCheckout = action === "checkout";
   const customer = customers.find((item) => item.id === booking.customerId);
   const vehicle = vehicles.find((item) => item.id === booking.vehicleId);
@@ -204,12 +206,14 @@ function BookingLifecycleDialog({ booking, action, onClose, onStarted }: { booki
   const [signatoryName, setSignatoryName] = useState(customer?.name ?? "");
   const [error, setError] = useState("");
   const [odometerText, setOdometerText] = useState("");
+  const [odometerPhoto, setOdometerPhoto] = useState<string | undefined>();
   const [photos, setPhotos] = useState<InspectionPhoto[]>([]);
   const [repName, setRepName] = useState(currentUser?.name ?? "");
   const [repSignature, setRepSignature] = useState("");
   const pickupInspection = isCheckout ? undefined : inspections.filter((item) => item.bookingId === booking.id && item.stage === "Pickup").sort((a, b) => b.createdAt.localeCompare(a.createdAt))[0];
   const rentalDays = nightsBetween(booking.startDate, booking.endDate);
-  const distanceKm = !isCheckout && odometerText !== "" ? Math.max(0, Number(odometerText) - (booking.checkoutOdometer ?? 0)) : 0;
+  const odometerMinimum = isCheckout ? lastOdometerReading(vehicle?.id ?? "", inspections, bookings) : booking.checkoutOdometer ?? 0;
+  const distanceKm = !isCheckout && odometerText !== "" ? Math.max(0, parseOdometer(odometerText) - (booking.checkoutOdometer ?? 0)) : 0;
   const includedKm = (booking.mileageAllowanceKmPerDay ?? vehicle?.mileageAllowanceKmPerDay ?? 0) * rentalDays;
   const excessKm = Math.max(0, distanceKm - includedKm);
   const mileageRate = booking.excessMileageRatePerKm ?? vehicle?.excessMileageRatePerKm ?? 0;
@@ -221,16 +225,17 @@ function BookingLifecycleDialog({ booking, action, onClose, onStarted }: { booki
     if (!signature) { setError("Capture the client signature before continuing."); return; }
     if (!repName.trim() || !repSignature) { setError(`Enter the ${company.name || "Classic Rides"} representative’s name and signature before continuing.`); return; }
     const form = new FormData(event.currentTarget);
-    const odometer = Number(form.get("odometer"));
+    const odometerValidation = validateOdometer(odometerText, odometerPhoto, odometerMinimum);
+    if (odometerValidation) { setError(odometerValidation); return; }
+    const odometer = parseOdometer(odometerText);
     const fuel = Number(form.get("fuel"));
     const note = String(form.get("note")).trim();
-    if (!isCheckout && odometer < (booking.checkoutOdometer ?? 0)) { setError("Return odometer must be at least the pickup reading."); return; }
     const depositAmount = booking.depositAmount ?? vehicle?.depositAmount ?? 0;
     if (isCheckout && depositAmount > 0 && form.get("depositReceived") !== "on") { setError(`Confirm collection of the ${formatMoney(depositAmount)} vehicle deposit to start this rental.`); return; }
     const condition = Object.values(checklist).includes("attention") ? "Needs attention" : countDamageMarks(photos) ? "Fair" : "Good";
     const cleanPhotos = finalizePhotos(photos);
     const now = new Date();
-    addInspection({ customerId: booking.customerId, vehicleId: booking.vehicleId, bookingId: booking.id, stage: isCheckout ? "Pickup" : "Return", inspectionDate: `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}-${String(now.getDate()).padStart(2, "0")}`, odometerKm: odometer, fuelPercent: fuel, condition, notes: note, checklist, checklistNotes: cleanNotes(checklistNotes), signatoryName: signatoryName.trim(), signatureDataUrl: signature, signedAt: now.toISOString(), repName: repName.trim(), repSignatureDataUrl: repSignature, photos: cleanPhotos });
+    addInspection({ customerId: booking.customerId, vehicleId: booking.vehicleId, bookingId: booking.id, stage: isCheckout ? "Pickup" : "Return", inspectionDate: `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}-${String(now.getDate()).padStart(2, "0")}`, odometerKm: odometer, odometerPhotoDataUrl: odometerPhoto, fuelPercent: fuel, condition, notes: note, checklist, checklistNotes: cleanNotes(checklistNotes), signatoryName: signatoryName.trim(), signatureDataUrl: signature, signedAt: now.toISOString(), repName: repName.trim(), repSignatureDataUrl: repSignature, photos: cleanPhotos });
     updateBooking(booking.id, isCheckout
       ? { status: "Active", checkoutOdometer: odometer, checkoutFuel: fuel, checkoutNote: note, depositStatus: depositAmount > 0 ? "Held" : "None" }
       : { status: "Completed", returnOdometer: odometer, returnFuel: fuel, returnNote: note, distanceKm, includedMileageKm: includedKm, excessMileageKm: excessKm, excessMileageCharge: excessCharge });
@@ -240,7 +245,7 @@ function BookingLifecycleDialog({ booking, action, onClose, onStarted }: { booki
   return <Modal title={isCheckout ? "Vehicle handover" : "Return inspection"} onClose={onClose}>
     <p className="modal-description">{isCheckout ? "Record the pickup readings, inspect the vehicle and collect the client’s signature." : "Complete the return inspection and client sign-off to mark this booking complete."}</p>
     <form className="form-grid" onSubmit={save}>
-      <Field label="Odometer (km)"><input name="odometer" type="number" min={isCheckout ? 0 : booking.checkoutOdometer ?? 0} placeholder="e.g. 48,250" value={isCheckout ? undefined : odometerText} onChange={(event) => !isCheckout && setOdometerText(event.target.value)} defaultValue={isCheckout ? undefined : undefined} required /></Field>
+      <OdometerField value={odometerText} onChange={setOdometerText} photo={odometerPhoto} onPhotoChange={setOdometerPhoto} minimum={odometerMinimum} minimumLabel={isCheckout ? undefined : "Pickup reading"} />
       <Field label="Fuel level"><select name="fuel" defaultValue={isCheckout ? "100" : String(booking.checkoutFuel ?? 100)}><option value="100">Full</option><option value="75">¾ tank</option><option value="50">½ tank</option><option value="25">¼ tank</option><option value="0">Empty</option></select></Field>
       <Field label={`${isCheckout ? "Pickup" : "Return"} note (optional)`} wide><textarea name="note" rows={2} defaultValue={isCheckout ? booking.checkoutNote : booking.returnNote} placeholder="Note existing marks or customer comments" /></Field>
       {isCheckout && (booking.depositAmount ?? vehicle?.depositAmount ?? 0) > 0 && <label className="deposit-confirmation form-field-wide"><input type="checkbox" name="depositReceived" required /><span>Confirm the {formatMoney(booking.depositAmount ?? vehicle?.depositAmount ?? 0)} vehicle deposit has been collected.</span></label>}
@@ -269,7 +274,7 @@ function BookingPriceSummary({ vehicle, startDate, endDate }: { vehicle?: Vehicl
   </div>;
 }
 
-type PrebookingRequestView = { id: string; vehicleId: string; customerName: string; email: string; phone: string; driverLicence: string; startDate: string; endDate: string; message: string; status: "New" | "Contacted" | "Accepted" | "Declined"; createdAt: string };
+type PrebookingRequestView = { id: string; vehicleId: string; customerName: string; phone: string; email?: string; driverLicence?: string; startDate?: string; endDate?: string; message?: string; status: "New" | "Contacted" | "Accepted" | "Declined"; createdAt: string };
 
 function PublicPrebookingInbox({ vehicles }: { vehicles: Vehicle[] }) {
   const [requests, setRequests] = useState<PrebookingRequestView[]>([]);
@@ -304,7 +309,7 @@ function PublicPrebookingInbox({ vehicles }: { vehicles: Vehicle[] }) {
     {error && <p className="form-error" role="alert">{error}</p>}
     {loading ? <p className="public-requests-empty">Loading requests…</p> : !requests.length && !error ? <p className="public-requests-empty">Vehicle requests submitted through shared links will appear here.</p> : <div className="public-request-list">{requests.map((request) => {
       const vehicle = vehicles.find((item) => item.id === request.vehicleId);
-      return <article className="public-request-card" key={request.id}><div className="public-request-heading"><div><strong>{request.customerName}</strong><small>{vehicle ? `${vehicle.year} ${vehicle.make} ${vehicle.model}` : "Vehicle"} · {dateLabel(request.startDate)} to {dateLabel(request.endDate)}</small></div><span className={`status-pill status-${slug(request.status)}`}>{request.status}</span></div><div className="public-request-contact"><a href={`mailto:${encodeURIComponent(request.email)}`}>{request.email}</a><a href={`tel:${request.phone.replaceAll(" ", "")}`}>{request.phone}</a><span>Licence: {request.driverLicence}</span></div>{request.message && <p>{request.message}</p>}<div className="public-request-actions"><a className="text-action" href={`https://classicrides.online/rent/${encodeURIComponent(request.vehicleId)}`} target="_blank" rel="noreferrer">Open shared listing</a><select aria-label={`Update status for ${request.customerName}`} value={request.status} onChange={(event) => void setStatus(request.id, event.target.value as PrebookingRequestView["status"])}><option>New</option><option>Contacted</option><option>Accepted</option><option>Declined</option></select></div></article>;
+      return <article className="public-request-card" key={request.id}><div className="public-request-heading"><div><strong>{request.customerName}</strong><small>{vehicle ? `${vehicle.year} ${vehicle.make} ${vehicle.model}` : "Vehicle"} · {request.startDate && request.endDate ? `${dateLabel(request.startDate)} to ${dateLabel(request.endDate)}` : "No dates requested · call to confirm"}</small></div><span className={`status-pill status-${slug(request.status)}`}>{request.status}</span></div><div className="public-request-contact"><a href={`tel:${request.phone.replaceAll(" ", "")}`}>{request.phone}</a>{request.email && <a href={`mailto:${encodeURIComponent(request.email)}`}>{request.email}</a>}{request.driverLicence && <span>Licence: {request.driverLicence}</span>}</div>{request.message && <p>{request.message}</p>}<div className="public-request-actions"><a className="text-action" href={`https://classicrides.online/rent/${encodeURIComponent(request.vehicleId)}`} target="_blank" rel="noreferrer">Open shared listing</a><select aria-label={`Update status for ${request.customerName}`} value={request.status} onChange={(event) => void setStatus(request.id, event.target.value as PrebookingRequestView["status"])}><option>New</option><option>Contacted</option><option>Accepted</option><option>Declined</option></select></div></article>;
     })}</div>}
   </section>;
 }
@@ -415,12 +420,12 @@ function TeamWorkspace() {
     try { await navigator.clipboard.writeText(inviteUrl); setNotice("Invitation link copied."); }
     catch { window.prompt("Copy this invitation link", inviteUrl); }
   }
-  const mayInviteManager = currentUser?.role === "super_admin";
+  const mayInviteManager = currentUser?.role === "super_admin" || currentUser?.role === "manager";
   return <div className="team-access-layout">
     <section className="panel team-invite-panel"><div className="panel-heading"><div><p className="eyebrow">INVITE STAFF</p><h2>Give your team access</h2></div></div><p className="team-access-help">Invite a manager or sales colleague. Invitations expire after seven days.</p>
       <form className="team-invite-form" onSubmit={invite}><label>Email address<input type="email" autoComplete="email" required value={email} onChange={(event) => setEmail(event.target.value)} placeholder="person@example.com" /></label><label>Role<select value={role} onChange={(event) => setRole(event.target.value as "manager" | "sales")}><option value="sales">Sales</option>{mayInviteManager && <option value="manager">Manager</option>}</select></label><button className="button button-primary" type="submit" disabled={busy}>{busy ? "Creating…" : "Send invitation"}</button></form>
       {error && <p className="form-error team-notice" role="alert">{error}</p>}{notice && <p className="team-notice" role="status">{notice}</p>}{inviteUrl && <div className="invite-link-box"><input aria-label="Invitation link" readOnly value={inviteUrl} /><button type="button" className="button button-quiet" onClick={() => void copyInvite()}>Copy link</button></div>}
-      {currentUser?.role === "manager" && <p className="form-hint">Managers can invite sales staff. Only the super admin can invite another manager or change company settings.</p>}
+      {currentUser?.role === "manager" && <p className="form-hint">Managers can invite managers and sales staff. Only the super admin can change company settings.</p>}
     </section>
     <section className="panel team-directory-panel"><div className="panel-heading"><div><p className="eyebrow">WORKSPACE MEMBERS</p><h2>People with access</h2></div><span className="result-count">{users.length} active</span></div>{users.length === 0 ? <p className="team-access-help">No workspace users yet.</p> : <div className="team-member-list">{users.map((user) => <article className="team-member-row" key={user.id}><span className="team-member-avatar">{user.name.slice(0, 1).toUpperCase()}</span><div><strong>{user.name}</strong><small>{user.email}</small></div><span className="status-pill status-available">{user.role.replace("_", " ")}</span></article>)}</div>}
       {invites.length > 0 && <><p className="eyebrow team-pending-title">PENDING INVITATIONS</p><div className="team-member-list">{invites.map((invite) => <article className="team-member-row" key={invite.id}><span className="team-member-avatar team-invite-avatar">✉</span><div><strong>{invite.email}</strong><small>{invite.role} · expires {dateLabel(invite.expiresAt)}</small></div><span className="status-pill status-confirmed">Invited</span></article>)}</div></>}
@@ -436,6 +441,7 @@ export function ModuleWorkspace({ module }: { module: string }) {
   if (module === "settings") return <CompanySettingsWorkspace />;
   if (module === "inspections") return <InspectionWorkspace />;
   if (module === "expenses") return <ExpensesWorkspace />;
+  if (module === "activity") return <ActivityWorkspace />;
   if (!page) return <AppShell><PageTopbar title="Page not found" /><main className="module-wrap"><h1>Page not found</h1><Link href="/">Return to overview</Link></main></AppShell>;
   const Action = module === "reports" || module === "team" ? null : <button className="button button-primary page-action" onClick={() => setOpen(true)}><span aria-hidden="true">＋</span>{page.action}</button>;
   return <AppShell active={page.title}>

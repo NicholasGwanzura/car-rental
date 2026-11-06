@@ -8,6 +8,7 @@ import { WorkspaceDialog } from "@/components/workspace-dialog";
 import { DrillLink } from "@/components/drilldown";
 import { ClientSignature, InspectionChecklistFields, checklistDeclaration, checklistRows, checklistStatusLabel, inspectionChecklistItems } from "@/components/inspection-inputs";
 import { InspectionPhotoField, InspectionPhotoGallery, countDamageMarks, countRealPhotos, finalizePhotos } from "@/components/inspection-photos";
+import { OdometerField, lastOdometerReading, parseOdometer, validateOdometer } from "@/components/odometer-field";
 import { useRentalData, type InspectionChecklist, type InspectionPhoto, type PrebookingInspection } from "@/lib/rental-data";
 
 function localDateValue() {
@@ -31,6 +32,8 @@ export function InspectionWorkspace() {
   const [vehicleId, setVehicleId] = useState("");
   const [bookingId, setBookingId] = useState("");
   const [photos, setPhotos] = useState<InspectionPhoto[]>([]);
+  const [odometerText, setOdometerText] = useState("");
+  const [odometerPhoto, setOdometerPhoto] = useState<string | undefined>();
   const [error, setError] = useState("");
   const [saved, setSaved] = useState(false);
   const [checklist, setChecklist] = useState<InspectionChecklist>({});
@@ -45,7 +48,7 @@ export function InspectionWorkspace() {
   const matchingBookings = bookings.filter((booking) => booking.customerId === customerId && booking.vehicleId === vehicleId);
 
   function resetForm() {
-    setOpen(false); setCustomerId(""); setVehicleId(""); setBookingId(""); setPhotos([]); setError(""); setChecklist({}); setChecklistNotes({}); setSignature(""); setSignatoryName(""); setRepSignature(""); setRepName(currentUser?.name ?? "");
+    setOpen(false); setCustomerId(""); setVehicleId(""); setBookingId(""); setPhotos([]); setOdometerText(""); setOdometerPhoto(undefined); setError(""); setChecklist({}); setChecklistNotes({}); setSignature(""); setSignatoryName(""); setRepSignature(""); setRepName(currentUser?.name ?? "");
   }
 
   function save(event: FormEvent<HTMLFormElement>) {
@@ -54,11 +57,13 @@ export function InspectionWorkspace() {
     if (inspectionChecklistItems.some((item) => !checklist[item.key])) { setError("Complete every checklist item before saving the inspection."); return; }
     if (!signature || !signatoryName.trim()) { setError("Enter the client name and capture their signature."); return; }
     if (!repSignature || !repName.trim()) { setError(`Enter the ${company.name || "Classic Rides"} representative’s name and signature.`); return; }
+    const odometerValidation = validateOdometer(odometerText, odometerPhoto, lastOdometerReading(vehicleId, inspections, bookings));
+    if (odometerValidation) { setError(odometerValidation); return; }
     const form = new FormData(event.currentTarget);
     const created = addInspection({
       customerId: String(form.get("customerId")), vehicleId: String(form.get("vehicleId")),
       ...(bookingId ? { bookingId } : {}), stage: "Pre-booking", inspectionDate: String(form.get("inspectionDate")),
-      odometerKm: Number(form.get("odometerKm")), fuelPercent: Number(form.get("fuelPercent")),
+      odometerKm: parseOdometer(odometerText), odometerPhotoDataUrl: odometerPhoto, fuelPercent: Number(form.get("fuelPercent")),
       condition: String(form.get("condition")) as PrebookingInspection["condition"],
       notes: String(form.get("notes")).trim(), photos: finalizePhotos(photos), checklist, checklistNotes: Object.fromEntries(Object.entries(checklistNotes).map(([key, note]) => [key, note.trim()]).filter(([, note]) => note)), signatoryName: signatoryName.trim(), signatureDataUrl: signature, signedAt: new Date().toISOString(), repName: repName.trim(), repSignatureDataUrl: repSignature,
     });
@@ -89,6 +94,7 @@ export function InspectionWorkspace() {
         {selected && <section className="inspection-detail panel"><div className="panel-heading"><div><p className="eyebrow">INSPECTION DETAIL</p><h2>{customers.find((item) => item.id === selected.customerId)?.name ?? "Customer"}</h2></div><span className="status-pill status-confirmed">{selected.condition}</span></div>
           <div className="inspection-linked-records"><div><span>CUSTOMER</span><strong><DrillLink kind="customer" id={customers.find((item) => item.id === selected.customerId)?.id}>{customers.find((item) => item.id === selected.customerId)?.name ?? "Customer unavailable"}</DrillLink></strong><small>{customers.find((item) => item.id === selected.customerId)?.phone ?? ""}</small></div><div><span>VEHICLE</span><strong><DrillLink kind="vehicle" id={vehicles.find((item) => item.id === selected.vehicleId)?.id}>{vehicles.find((item) => item.id === selected.vehicleId)?.registration ?? "Vehicle unavailable"}</DrillLink></strong><small>{(() => { const v = vehicles.find((item) => item.id === selected.vehicleId); return v ? `${v.make} ${v.model}` : ""; })()}</small></div></div>
           <div className="inspection-facts"><span><small>INSPECTION DATE</small><strong>{formatInspectionDate(selected.inspectionDate)}</strong></span><span><small>ODOMETER</small><strong>{selected.odometerKm.toLocaleString()} km</strong></span><span><small>FUEL</small><strong>{selected.fuelPercent}%</strong></span></div>
+          {selected.odometerPhotoDataUrl && <div className="inspection-odometer-photo"><span>ODOMETER READING · {selected.odometerKm.toLocaleString()} km</span><img src={selected.odometerPhotoDataUrl} alt="Dashboard odometer photo" /></div>}
           {selected.checklist && <div className="inspection-saved-checklist"><span>VEHICLE CHECKLIST</span>{checklistRows(selected.checklist).map((entry) => <div key={entry.key}><span>{entry.label}{selected.checklistNotes?.[entry.key] && <small className="checklist-note">{selected.checklistNotes[entry.key]}</small>}</span><strong className={selected.checklist?.[entry.key] === "attention" ? "is-issue" : undefined}>{checklistStatusLabel(entry.key, selected.checklist?.[entry.key])}</strong></div>)}</div>}
           {(selected.signatureDataUrl || selected.repSignatureDataUrl) && <div className="inspection-signatures">{selected.signatureDataUrl && <div className="inspection-saved-signature"><span>CLIENT · {selected.signatoryName || "CLIENT"}</span><img src={selected.signatureDataUrl} alt={`Signature from ${selected.signatoryName || "client"}`} /></div>}{selected.repSignatureDataUrl && <div className="inspection-saved-signature"><span>{(company.name || "Classic Rides").toUpperCase()} · {selected.repName || "REPRESENTATIVE"}</span><img src={selected.repSignatureDataUrl} alt={`Signature from ${selected.repName || "representative"}`} /></div>}</div>}
           <div className="inspection-notes"><span>CONDITION NOTES</span><p>{selected.notes || "No additional notes."}</p></div>
@@ -103,7 +109,7 @@ export function InspectionWorkspace() {
         <label className="form-field form-field-wide"><span>Vehicle</span><select name="vehicleId" required value={vehicleId} onChange={(event) => { setVehicleId(event.target.value); setBookingId(""); }}><option value="" disabled>Select vehicle</option>{vehicles.map((vehicle) => <option key={vehicle.id} value={vehicle.id}>{vehicle.registration} · {vehicle.make} {vehicle.model}</option>)}</select></label>
         <label className="form-field form-field-wide"><span>Related booking <small>(optional)</small></span><select value={bookingId} onChange={(event) => setBookingId(event.target.value)} disabled={!matchingBookings.length}><option value="">No booking yet</option>{matchingBookings.map((booking) => <option key={booking.id} value={booking.id}>{booking.reference} · {formatInspectionDate(booking.startDate)}</option>)}</select><input type="hidden" name="bookingId" value={bookingId} /></label>
         <label className="form-field"><span>Inspection date</span><input name="inspectionDate" type="date" defaultValue={localDateValue()} required /></label>
-        <label className="form-field"><span>Odometer (km)</span><input name="odometerKm" type="number" min="0" step="1" placeholder="e.g. 48,250" required /></label>
+        <OdometerField value={odometerText} onChange={setOdometerText} photo={odometerPhoto} onPhotoChange={setOdometerPhoto} minimum={lastOdometerReading(vehicleId, inspections, bookings)} />
         <label className="form-field"><span>Fuel level</span><select name="fuelPercent" defaultValue="100"><option value="100">Full · 100%</option><option value="75">¾ tank · 75%</option><option value="50">½ tank · 50%</option><option value="25">¼ tank · 25%</option><option value="0">Empty · 0%</option></select></label>
         <label className="form-field"><span>Overall condition</span><select name="condition" defaultValue="Good"><option>Good</option><option>Fair</option><option>Needs attention</option></select></label>
         <label className="form-field form-field-wide"><span>Condition notes</span><textarea name="notes" rows={3} placeholder="Describe existing damage, cleanliness, or other notes." /></label>

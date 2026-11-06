@@ -212,6 +212,7 @@ function InspectionDetail({ id }: { id: string }) {
       {booking && <div><span>BOOKING</span><DrillLink kind="booking" id={booking.id}><strong>{booking.reference}</strong></DrillLink></div>}
     </div>
     <Facts items={[["Date", longDate(item.inspectionDate)], ["Odometer", `${item.odometerKm.toLocaleString()} km`], ["Fuel", `${item.fuelPercent}%`], ["Condition", item.condition], ["Checklist issues", issues.length ? issues.map((entry) => entry.label).join(", ") : "None"], ["Notes", item.notes]]} />
+    {item.odometerPhotoDataUrl && <div className="inspection-odometer-photo"><span>ODOMETER READING · {item.odometerKm.toLocaleString()} km</span><Image src={item.odometerPhotoDataUrl} alt="Dashboard odometer photo" width={480} height={360} unoptimized /></div>}
     <InspectionPhotoGallery photos={item.photos} />
     {(item.signatureDataUrl || item.repSignatureDataUrl) && <div className="inspection-signatures">{item.signatureDataUrl && <div className="inspection-saved-signature"><span>CLIENT · {item.signatoryName || "CLIENT"}</span><Image src={item.signatureDataUrl} alt="Client signature" width={320} height={80} unoptimized /></div>}{item.repSignatureDataUrl && <div className="inspection-saved-signature"><span>{(company.name || "Classic Rides").toUpperCase()} · {item.repName || "REPRESENTATIVE"}</span><Image src={item.repSignatureDataUrl} alt="Representative signature" width={320} height={80} unoptimized /></div>}</div>}
   </>;

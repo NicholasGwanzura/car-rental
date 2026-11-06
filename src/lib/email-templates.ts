@@ -86,22 +86,23 @@ ${emailButton(input.invitationUrl, "Accept invitation")}
   return { subject: `You’re invited to the ${details.name} workspace`, html, text };
 }
 
-export function prebookingAlertEmail(input: { company: CompanyLike; reference: string; vehicleName: string; registration?: string; customerName: string; email: string; phone: string; driverLicence: string; startDate: string; endDate: string; estimate?: number; message?: string; workspaceUrl: string }): EmailContent {
-  const dates = `${longDate(input.startDate)} – ${longDate(input.endDate)}`;
+export function prebookingAlertEmail(input: { company: CompanyLike; reference: string; vehicleName: string; registration?: string; customerName: string; phone: string; email?: string; driverLicence?: string; startDate?: string; endDate?: string; estimate?: number; message?: string; workspaceUrl: string }): EmailContent {
+  const hasDates = Boolean(input.startDate && input.endDate);
+  const dates = hasDates ? `${longDate(input.startDate as string)} – ${longDate(input.endDate as string)}` : "No dates requested — call to confirm availability";
   const waNumber = whatsappDigits(input.phone);
   const html = emailLayout({
     company: input.company,
-    preheader: `${input.customerName} wants the ${input.vehicleName}, ${dates}.`,
+    preheader: `${input.customerName} wants the ${input.vehicleName}.`,
     heading: "New pre-booking request",
-    body: `${p(`<strong>${escapeHtml(input.customerName)}</strong> sent a pre-booking request from the website. Confirm availability with them, then create the booking in the workspace.`)}
+    body: `${p(`<strong>${escapeHtml(input.customerName)}</strong> sent a pre-booking request from the website. Call them back to confirm availability, then create the booking in the workspace.`)}
 <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="margin:4px 0 6px;">
 ${detailRow("Reference", escapeHtml(input.reference))}
 ${detailRow("Vehicle", `${escapeHtml(input.vehicleName)}${input.registration ? ` · ${escapeHtml(input.registration)}` : ""}`)}
 ${detailRow("Dates", escapeHtml(dates))}
 ${input.estimate ? detailRow("Estimate", escapeHtml(money(input.estimate))) : ""}
 ${detailRow("Phone", `<a href="tel:${escapeHtml(input.phone.replace(/\s+/g, ""))}" style="color:#1f715e;">${escapeHtml(input.phone)}</a>${waNumber ? ` · <a href="https://wa.me/${escapeHtml(waNumber)}" style="color:#1f715e;">WhatsApp</a>` : ""}`)}
-${detailRow("Email", `<a href="mailto:${escapeHtml(input.email)}" style="color:#1f715e;">${escapeHtml(input.email)}</a>`)}
-${detailRow("Driver licence", escapeHtml(input.driverLicence))}
+${input.email ? detailRow("Email", `<a href="mailto:${escapeHtml(input.email)}" style="color:#1f715e;">${escapeHtml(input.email)}</a>`) : ""}
+${input.driverLicence ? detailRow("Driver licence", escapeHtml(input.driverLicence)) : ""}
 ${input.message ? detailRow("Note", escapeHtml(input.message).replace(/\n/g, "<br>")) : ""}
 </table>
 ${emailButton(input.workspaceUrl, "Open pre-booking requests")}
@@ -114,8 +115,8 @@ ${muted("Reply to this email to answer the customer directly.")}`,
     `Dates: ${dates}`,
     input.estimate ? `Estimate: ${money(input.estimate)}` : "",
     `Phone: ${input.phone}`,
-    `Email: ${input.email}`,
-    `Driver licence: ${input.driverLicence}`,
+    input.email ? `Email: ${input.email}` : "",
+    input.driverLicence ? `Driver licence: ${input.driverLicence}` : "",
     input.message ? `Note: ${input.message}` : "",
     `\nOpen pre-booking requests: ${input.workspaceUrl}`,
     `Reply to this email to answer the customer directly.`,

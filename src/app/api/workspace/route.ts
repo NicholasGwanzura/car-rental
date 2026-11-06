@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { getWorkspaceSession } from "@/lib/workspace-auth";
-import { loadWorkspaceData, updateWorkspaceData } from "@/lib/workspace-db";
+import { loadWorkspaceData, recordAuditEntries, updateWorkspaceData } from "@/lib/workspace-db";
+import { diffWorkspace } from "@/lib/audit-diff";
 import { hasDeletions, mergeWorkspace, parseDeleted } from "@/lib/workspace-merge";
 
 export const runtime = "nodejs";
@@ -35,8 +36,10 @@ export async function PUT(request: Request) {
   const incoming = body as Record<string, unknown>;
   const deleted = parseDeleted(incoming._deleted);
   try {
+    let previous: Record<string, unknown> = {};
     const saved = await updateWorkspaceData((current) => {
       const stored = current as Record<string, unknown>;
+      previous = stored;
       if (user.role === "sales" && hasDeletions(deleted, ["vehicles", "customers", "bookings"])) throw new ForbiddenChange("Only managers can delete vehicles, customers, or bookings.");
       // Merge by record so a stale tab or another device can't wipe records it hasn't loaded.
       const next = mergeWorkspace(stored, incoming, deleted);
@@ -45,6 +48,8 @@ export async function PUT(request: Request) {
       if (user.role === "sales") next.expenses = stored.expenses ?? [];
       return next;
     });
+    // Who changed what, worked out from what was actually stored.
+    await recordAuditEntries({ id: user.id, name: user.name, role: user.role }, diffWorkspace(previous, saved as Record<string, unknown>));
     return NextResponse.json({ ok: true, data: visibleTo(user.role, saved as Record<string, unknown>) });
   } catch (error) {
     if (error instanceof ForbiddenChange) return NextResponse.json({ error: error.message }, { status: 403 });
