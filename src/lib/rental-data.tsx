@@ -1,7 +1,7 @@
 "use client";
 
 import type { DepositDeduction } from "@/lib/deposit";
-import { BrandLogo } from "@/components/brand-mark";
+import { BrandArtwork } from "@/components/brand-mark";
 import { createContext, useContext, useEffect, useMemo, useRef, useState, type FormEvent, type ReactNode } from "react";
 
 export type VehicleType = "Budget" | "Premium" | "SUV";
@@ -235,7 +235,7 @@ function WorkspaceLogin({ onSuccess }: { onSuccess: (data: StoreData, user: Work
     finally { setBusy(false); }
   }
   return <main className="workspace-login"><form className="workspace-login-card" onSubmit={submit}>
-    <BrandLogo size={52} className="login-brand" /><p className="eyebrow">CLASSIC RIDES</p><h1>{setupRequired ? "Set up your workspace" : "Welcome back"}<span>.</span></h1><p>{setupRequired ? "Create the first administrator account to protect your workspace." : "Sign in to your rental workspace."}</p>
+    <BrandArtwork className="login-artwork" /><p className="eyebrow">CLASSIC RIDES</p><h1>{setupRequired ? "Set up your workspace" : "Welcome back"}<span>.</span></h1><p>{setupRequired ? "Create the first administrator account to protect your workspace." : "Sign in to your rental workspace."}</p>
     {setupRequired && <label className="form-field"><span>Full name</span><input name="name" autoComplete="name" required value={name} onChange={(event) => setName(event.target.value)} /></label>}
     <label className="form-field"><span>Work email</span><input name="email" type="email" autoComplete="username" required readOnly={setupRequired} value={setupRequired ? allowedEmail : email} onChange={(event) => setEmail(event.target.value)} /></label>
     <label className="form-field"><span>{setupRequired ? "Create password" : "Password"}</span><div className="login-password-wrap"><input name="password" type={showPassword ? "text" : "password"} autoComplete={setupRequired ? "new-password" : "current-password"} minLength={setupRequired ? 12 : undefined} autoFocus required value={password} onChange={(event) => setPassword(event.target.value)} /><button className="password-visibility" type="button" aria-label={showPassword ? "Hide password" : "Show password"} aria-pressed={showPassword} onClick={() => setShowPassword((value) => !value)}>{showPassword ? "Hide" : "Show"}</button></div>{setupRequired && <small>Use at least 12 characters. This password is entered by you and stored as a salted hash.</small>}</label>

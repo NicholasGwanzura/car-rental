@@ -1,4 +1,10 @@
 import { BRAND } from "@/lib/brand";
+import Image from "next/image";
+
+/** Classic Rides horizontal wordmark and car mark. */
+export function BrandArtwork({ className = "" }: { className?: string }) {
+  return <Image className={`brand-artwork ${className}`.trim()} src="/classic-rides-logo.png" alt="" width={2172} height={724} priority />;
+}
 
 /** The Classic Rides "CR" mark (same artwork as src/app/icon.svg). */
 export function BrandLogo({ size = 40, className = "" }: { size?: number; className?: string }) {

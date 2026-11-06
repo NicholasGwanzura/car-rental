@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { useEffect, useRef, useState, type ReactNode } from "react";
 import { useRentalData } from "@/lib/rental-data";
-import { BrandLogo } from "@/components/brand-mark";
+import { BrandArtwork, BrandLogo } from "@/components/brand-mark";
 
 const navigation = [
   { label: "Overview", href: "/workspace", icon: "overview" },
@@ -71,8 +71,8 @@ export function AppShell({ children, active = "Overview" }: { children: ReactNod
   return <div className="app-shell">
     <aside className="sidebar">
       <Link className="brand" href="/workspace" aria-label="Classic Rides workspace home">
+        <BrandArtwork className="sidebar-artwork" />
         <BrandLogo size={38} className="sidebar-logo" />
-        <span className="brand-copy"><strong>Classic Rides</strong><small>RENTAL OPERATIONS</small></span>
       </Link>
       <p className="nav-label">WORKSPACE</p>
       <nav className="primary-nav" aria-label="Main navigation">

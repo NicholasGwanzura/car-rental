@@ -1350,3 +1350,13 @@ button.upcoming-row .upcoming-details{text-align:left}
 @media(max-width:640px){.deposit-deduction{grid-template-columns:1fr 1fr 34px}.deposit-deduction select{grid-column:1/3}.deposit-deduction input:nth-of-type(1){grid-column:1/3}.deposit-deduction .deposit-amount{grid-column:1/2}.deposit-deduction .deposit-remove{grid-column:3/4;grid-row:3}}
 .pnl-hint{margin-left:6px;color:var(--muted);font-size:11px;font-weight:500}
 @media(max-width:640px){.deposit-deduction+.deposit-deduction{margin-top:4px;padding-top:10px;border-top:1px dashed var(--line)}}
+.cr-brand-art{width:190px;height:61px;gap:0;padding:2px 0;background:#fff}
+.brand-artwork{display:block;width:100%;height:100%;object-fit:contain}
+.cr-footer .cr-brand-art{width:230px;height:77px;padding:2px 5px;border-radius:8px}
+.sidebar-artwork{display:block;width:100%;max-width:192px;height:auto;aspect-ratio:3/1;padding:2px 0;background:#fff;object-fit:contain}
+.sidebar-logo{display:none}
+.login-artwork,.login-artwork-link{display:block;width:210px;max-width:100%;height:70px;background:#fff;object-fit:contain}
+.login-artwork{padding:3px 0}
+.login-artwork-link{margin-bottom:16px}
+@media(max-width:820px){.sidebar-artwork{display:none}.sidebar-logo{display:block}}
+@media(max-width:420px){.cr-header .cr-brand-art{width:145px;height:49px;padding:2px 4px}.cr-footer .cr-brand-art{width:205px;height:69px}}
