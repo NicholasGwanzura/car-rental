@@ -13,10 +13,15 @@ import { ClientSignature, InspectionChecklistFields, checklistDeclaration, inspe
 import { InspectionPhotoField, countDamageMarks, countRealPhotos, finalizePhotos } from "@/components/inspection-photos";
 import { OdometerField, lastOdometerReading, parseOdometer, validateOdometer } from "@/components/odometer-field";
 import { WorkspaceDialog } from "@/components/workspace-dialog";
-import { DrillLink } from "@/components/drilldown";
+import { DrillLink, useDrilldown } from "@/components/drilldown";
 import { CustomerDialog } from "@/components/customer-dialog";
 import { compressIdentityImage } from "@/lib/identity-image";
-import { exportRentalContract } from "@/lib/rental-contract";
+import { exportRentalContract, exportRentalReceipt } from "@/lib/rental-contract";
+import { DepositSettlementFields, emptySettlement, resolveSettlement, type SettlementDraft } from "@/components/deposit-settlement";
+import { depositSummary, settlementText } from "@/lib/deposit";
+import { vehicleMileage } from "@/lib/mileage";
+import { periodLabels, periodRange, type PeriodKey } from "@/lib/profitability";
+import { exportRentalsReport, exportUsageReport } from "@/lib/usage-report";
 import { formatMoney, nightsBetween, useRentalData, type Booking, type Customer, type InspectionChecklist, type InspectionPhoto, type Vehicle } from "@/lib/rental-data";
 
 const pageCopy: Record<string, { title: string; summary: string; action?: string }> = {
@@ -102,6 +107,11 @@ function useContractExport() {
       if (!booking) return;
       exportRentalContract({ booking, company, pickup: pickupFor(bookingId), customer: customers.find((item) => item.id === booking.customerId), vehicle: vehicles.find((item) => item.id === booking.vehicleId) });
     },
+    exportReceipt: (bookingId: string) => {
+      const booking = bookings.find((item) => item.id === bookingId);
+      if (!booking) return;
+      exportRentalReceipt({ booking, company, pickup: pickupFor(bookingId), customer: customers.find((item) => item.id === booking.customerId), vehicle: vehicles.find((item) => item.id === booking.vehicleId) });
+    },
   };
 }
 
@@ -176,17 +186,83 @@ function FleetWorkspace() {
   </>;
 }
 
+type CustomerFilter = "all" | "rent" | "owing" | "missing";
+const customerFilters: { id: CustomerFilter; label: string }[] = [
+  { id: "all", label: "All" },
+  { id: "rent", label: "On rent" },
+  { id: "owing", label: "Owes money" },
+  { id: "missing", label: "Missing documents" },
+];
+
+function initials(name: string) {
+  return name.split(/\s+/).filter(Boolean).slice(0, 2).map((part) => part[0]?.toUpperCase()).join("") || "?";
+}
+
 function CustomerWorkspace() {
   const { customers, deleteCustomer, canDelete, bookings, ready } = useRentalData();
+  const { open: openDetails } = useDrilldown();
   const [open, setOpen] = useState(false);
   const [deletingCustomer, setDeletingCustomer] = useState<Customer | null>(null);
   const [query, setQuery] = useState("");
+  const [filter, setFilter] = useState<CustomerFilter>("all");
   const [editingCustomer, setEditingCustomer] = useState<Customer | null>(null);
-  const filtered = customers.filter((customer) => `${customer.name} ${customer.phone} ${customer.email}`.toLowerCase().includes(query.toLowerCase()));
+
+  // One row per saved customer, A to Z, with everything the card shows worked out once.
+  const rows = customers.map((customer) => {
+    const own = bookings.filter((booking) => booking.customerId === customer.id);
+    const billable = own.filter((booking) => booking.status !== "Cancelled");
+    const amount = (booking: Booking) => booking.total + (booking.excessMileageCharge ?? 0);
+    return {
+      customer,
+      bookingCount: own.length,
+      billed: billable.reduce((sum, booking) => sum + amount(booking), 0),
+      unpaid: billable.filter((booking) => booking.paymentStatus !== "Paid").reduce((sum, booking) => sum + amount(booking), 0),
+      current: own.find((booking) => booking.status === "Active"),
+      upcoming: own.filter((booking) => booking.status === "Confirmed").sort((a, b) => a.startDate.localeCompare(b.startDate))[0],
+      missing: [!customer.idPhotoDataUrl && "ID photo", !customer.licencePhotoDataUrl && "licence photo", !customer.address && "address"].filter((item): item is string => Boolean(item)),
+    };
+  }).sort((a, b) => a.customer.name.localeCompare(b.customer.name));
+
+  const needle = query.trim().toLowerCase();
+  const filtered = rows.filter((row) => {
+    const { customer } = row;
+    if (needle && !`${customer.name} ${customer.phone} ${customer.email} ${customer.licence} ${customer.idNumber ?? ""} ${customer.address ?? ""} ${customer.nextOfKinName ?? ""} ${customer.nextOfKinPhone ?? ""}`.toLowerCase().includes(needle)) return false;
+    if (filter === "rent") return Boolean(row.current);
+    if (filter === "owing") return row.unpaid > 0;
+    if (filter === "missing") return row.missing.length > 0;
+    return true;
+  });
+  const counts: Record<CustomerFilter, number> = { all: rows.length, rent: rows.filter((row) => row.current).length, owing: rows.filter((row) => row.unpaid > 0).length, missing: rows.filter((row) => row.missing.length > 0).length };
+
   if (!ready) return <LoadingState />;
   return <>
-    <div className="list-toolbar"><label className="search-box"><span aria-hidden="true">⌕</span><input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Search customers" aria-label="Search customers" /></label><span className="result-count">{customers.length} {customers.length === 1 ? "customer" : "customers"}</span></div>
-    {customers.length === 0 ? <EmptyState icon="♙" title="No customers yet" detail="Save renter contact details once, then select them when you create a booking." action={<button className="button button-primary" onClick={() => setOpen(true)}>＋ Add a customer</button>} /> : filtered.length === 0 ? <EmptyState icon="⌕" title="No matches" detail="Try a different name, phone, or email." /> : <TableFrame><thead><tr><th>CUSTOMER</th><th>PHONE</th><th>DRIVER LICENCE</th><th>NEXT OF KIN</th><th>DOCUMENTS</th><th>BOOKINGS</th><th>ADDED</th><th>ACTIONS</th></tr></thead><tbody>{filtered.map((customer) => <tr key={customer.id}><td data-label="Customer"><div className="table-primary"><DrillLink kind="customer" id={customer.id}>{customer.name}</DrillLink></div><div className="table-secondary">{customer.email || "No email added"}</div></td><td data-label="Phone">{customer.phone}</td><td data-label="Driver licence">{customer.licence || <span className="table-secondary">Not recorded</span>}<div className="table-secondary">ID {customer.idNumber || "not recorded"}</div></td><td data-label="Next of kin">{customer.nextOfKinName || "Not recorded"}<div className="table-secondary">{customer.nextOfKinPhone || ""}</div></td><td data-label="Documents"><div className="doc-status"><span className={customer.idPhotoDataUrl ? "is-ok" : "is-missing"}>{customer.idPhotoDataUrl ? "ID ✓" : "ID missing"}</span><span className={customer.licencePhotoDataUrl ? "is-ok" : "is-missing"}>{customer.licencePhotoDataUrl ? "Licence ✓" : "Licence missing"}</span></div>{(!customer.idPhotoDataUrl || !customer.licencePhotoDataUrl || !customer.address) && <button type="button" className="text-action" onClick={() => setEditingCustomer(customer)}>Add missing details</button>}</td><td data-label="Bookings">{bookings.filter((booking) => booking.customerId === customer.id).length}</td><td data-label="Added">{dateLabel(customer.createdAt.slice(0, 10))}</td><td data-label="Actions"><div className="row-actions"><button className="text-action" type="button" onClick={() => setEditingCustomer(customer)}>Edit</button>{canDelete && <button className="text-action text-action-danger" type="button" onClick={() => setDeletingCustomer(customer)}>Delete</button>}</div></td></tr>)}</tbody></TableFrame>}
+    <div className="list-toolbar"><label className="search-box"><span aria-hidden="true">⌕</span><input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Search name, phone, email, licence or ID" aria-label="Search customers" /></label><span className="result-count">{filtered.length === rows.length ? `${rows.length} ${rows.length === 1 ? "customer" : "customers"}` : `${filtered.length} of ${rows.length} customers`}</span></div>
+    {rows.length > 0 && <div className="customer-filters" role="group" aria-label="Filter customers">{customerFilters.map((item) => <button type="button" key={item.id} className={`customer-filter${filter === item.id ? " is-active" : ""}`} aria-pressed={filter === item.id} onClick={() => setFilter(item.id)}>{item.label}<span>{counts[item.id]}</span></button>)}</div>}
+    {rows.length === 0 ? <EmptyState icon="♙" title="No customers yet" detail="Save renter contact details once, then select them when you create a booking." action={<button className="button button-primary" onClick={() => setOpen(true)}>＋ Add a customer</button>} /> : filtered.length === 0 ? <EmptyState icon="⌕" title="No matches" detail={needle ? "Try a different name, phone, email, licence or ID number." : "No customers in this group."} /> : <div className="customer-grid">{filtered.map(({ customer, bookingCount, billed, unpaid, current, upcoming, missing }) => <article className="customer-card" key={customer.id}>
+      <button type="button" className="customer-card-open" onClick={() => openDetails({ kind: "customer", id: customer.id })} aria-label={`Open ${customer.name}`} />
+      <header className="customer-card-head">
+        <span className="customer-avatar" aria-hidden="true">{initials(customer.name)}</span>
+        <div><h3>{customer.name}</h3><small>Customer since {dateLabel(customer.createdAt.slice(0, 10))}</small></div>
+        {current ? <span className="status-pill status-active">On rent</span> : upcoming ? <span className="status-pill status-confirmed">Booked</span> : null}
+      </header>
+      {(current || upcoming) && <p className="customer-rental-note">{current ? `Returns ${dateLabel(current.endDate)}` : `Pickup ${dateLabel(upcoming?.startDate)}`}</p>}
+      <ul className="customer-contact">
+        <li><span>Phone</span><a href={`tel:${customer.phone.replace(/\s+/g, "")}`}>{customer.phone}</a></li>
+        <li><span>Email</span>{customer.email ? <a href={`mailto:${customer.email}`}>{customer.email}</a> : <em>Not added</em>}</li>
+        <li><span>Address</span>{customer.address ? <b>{customer.address}</b> : <em>Not recorded</em>}</li>
+      </ul>
+      <dl className="customer-facts">
+        <div><dt>Driver licence</dt><dd>{customer.licence || <em>Not recorded</em>}</dd></div>
+        <div><dt>ID number</dt><dd>{customer.idNumber || <em>Not recorded</em>}</dd></div>
+        <div className="is-wide"><dt>Next of kin</dt><dd>{customer.nextOfKinName ? `${customer.nextOfKinName}${customer.nextOfKinPhone ? ` · ${customer.nextOfKinPhone}` : ""}` : <em>Not recorded</em>}</dd></div>
+      </dl>
+      <div className="customer-docs">
+        {[{ label: "ID", src: customer.idPhotoDataUrl }, { label: "Licence", src: customer.licencePhotoDataUrl }].map((doc) => <div className={`customer-doc${doc.src ? "" : " is-missing"}`} key={doc.label}>{doc.src ? <Image src={doc.src} alt="" width={56} height={40} unoptimized /> : <span aria-hidden="true">!</span>}<small>{doc.label} {doc.src ? "photo" : "missing"}</small></div>)}
+      </div>
+      <div className="customer-stats"><div><span>Bookings</span><strong>{bookingCount}</strong></div><div><span>Billed</span><strong>{formatMoney(billed)}</strong></div><div className={unpaid > 0 ? "is-owing" : undefined}><span>Unpaid</span><strong>{formatMoney(unpaid)}</strong></div></div>
+      {missing.length > 0 && <p className="customer-missing">Missing: {missing.join(", ")}</p>}
+      <footer className="customer-card-actions"><button className="text-action" type="button" onClick={() => setEditingCustomer(customer)}>Edit</button>{canDelete && <button className="text-action text-action-danger" type="button" onClick={() => setDeletingCustomer(customer)}>Delete</button>}<span className="customer-card-hint" aria-hidden="true">Tap for details ›</span></footer>
+    </article>)}</div>}
     {deletingCustomer && <ConfirmDeleteDialog title={`Delete ${deletingCustomer.name}?`} confirmLabel="Delete customer" onClose={() => setDeletingCustomer(null)}
       blocked={bookings.some((booking) => booking.customerId === deletingCustomer.id && isOpenBooking(booking)) ? `${deletingCustomer.name} has a confirmed or active booking. Complete, cancel, or delete that booking before deleting the customer.` : undefined}
       description={<>{deletingCustomer.name}’s contact details and ID photo will be removed. Past bookings and inspections stay in your records and show the customer as removed. This can’t be undone.</>}
@@ -210,6 +286,7 @@ function BookingLifecycleDialog({ booking, action, onClose, onStarted }: { booki
   const [photos, setPhotos] = useState<InspectionPhoto[]>([]);
   const [repName, setRepName] = useState(currentUser?.name ?? "");
   const [repSignature, setRepSignature] = useState("");
+  const [settlement, setSettlement] = useState<SettlementDraft>(emptySettlement("later"));
   const pickupInspection = isCheckout ? undefined : inspections.filter((item) => item.bookingId === booking.id && item.stage === "Pickup").sort((a, b) => b.createdAt.localeCompare(a.createdAt))[0];
   const rentalDays = nightsBetween(booking.startDate, booking.endDate);
   const odometerMinimum = isCheckout ? lastOdometerReading(vehicle?.id ?? "", inspections, bookings) : booking.checkoutOdometer ?? 0;
@@ -231,6 +308,9 @@ function BookingLifecycleDialog({ booking, action, onClose, onStarted }: { booki
     const fuel = Number(form.get("fuel"));
     const note = String(form.get("note")).trim();
     const depositAmount = booking.depositAmount ?? vehicle?.depositAmount ?? 0;
+    const settleDeposit = !isCheckout && booking.depositStatus === "Held" && depositAmount > 0;
+    const settled = settleDeposit ? resolveSettlement(depositAmount, settlement) : { ok: true as const, changes: null };
+    if (!settled.ok) { setError(settled.error); return; }
     if (isCheckout && depositAmount > 0 && form.get("depositReceived") !== "on") { setError(`Confirm collection of the ${formatMoney(depositAmount)} vehicle deposit to start this rental.`); return; }
     const condition = Object.values(checklist).includes("attention") ? "Needs attention" : countDamageMarks(photos) ? "Fair" : "Good";
     const cleanPhotos = finalizePhotos(photos);
@@ -238,16 +318,17 @@ function BookingLifecycleDialog({ booking, action, onClose, onStarted }: { booki
     addInspection({ customerId: booking.customerId, vehicleId: booking.vehicleId, bookingId: booking.id, stage: isCheckout ? "Pickup" : "Return", inspectionDate: `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}-${String(now.getDate()).padStart(2, "0")}`, odometerKm: odometer, odometerPhotoDataUrl: odometerPhoto, fuelPercent: fuel, condition, notes: note, checklist, checklistNotes: cleanNotes(checklistNotes), signatoryName: signatoryName.trim(), signatureDataUrl: signature, signedAt: now.toISOString(), repName: repName.trim(), repSignatureDataUrl: repSignature, photos: cleanPhotos });
     updateBooking(booking.id, isCheckout
       ? { status: "Active", checkoutOdometer: odometer, checkoutFuel: fuel, checkoutNote: note, depositStatus: depositAmount > 0 ? "Held" : "None" }
-      : { status: "Completed", returnOdometer: odometer, returnFuel: fuel, returnNote: note, distanceKm, includedMileageKm: includedKm, excessMileageKm: excessKm, excessMileageCharge: excessCharge });
+      : { status: "Completed", returnOdometer: odometer, returnFuel: fuel, returnNote: note, distanceKm, includedMileageKm: includedKm, excessMileageKm: excessKm, excessMileageCharge: excessCharge, ...(settled.changes ?? {}) });
     onClose();
     if (isCheckout) onStarted?.(booking.id);
   }
   return <Modal title={isCheckout ? "Vehicle handover" : "Return inspection"} onClose={onClose}>
     <p className="modal-description">{isCheckout ? "Record the pickup readings, inspect the vehicle and collect the client’s signature." : "Complete the return inspection and client sign-off to mark this booking complete."}</p>
     <form className="form-grid" onSubmit={save}>
-      <OdometerField value={odometerText} onChange={setOdometerText} photo={odometerPhoto} onPhotoChange={setOdometerPhoto} minimum={odometerMinimum} minimumLabel={isCheckout ? undefined : "Pickup reading"} />
+      <OdometerField value={odometerText} onChange={setOdometerText} photo={odometerPhoto} onPhotoChange={setOdometerPhoto} minimum={odometerMinimum} minimumLabel={isCheckout ? undefined : "Pickup reading"} jumpNote={isCheckout ? (jump) => `Driven while the vehicle wasn’t booked since the last recorded reading: ${jump.toLocaleString()} km.${jump > 5000 ? " Double-check the figure before saving." : ""}` : undefined} />
       <Field label="Fuel level"><select name="fuel" defaultValue={isCheckout ? "100" : String(booking.checkoutFuel ?? 100)}><option value="100">Full</option><option value="75">¾ tank</option><option value="50">½ tank</option><option value="25">¼ tank</option><option value="0">Empty</option></select></Field>
       <Field label={`${isCheckout ? "Pickup" : "Return"} note (optional)`} wide><textarea name="note" rows={2} defaultValue={isCheckout ? booking.checkoutNote : booking.returnNote} placeholder="Note existing marks or customer comments" /></Field>
+      {!isCheckout && booking.depositStatus === "Held" && (booking.depositAmount ?? vehicle?.depositAmount ?? 0) > 0 && <div className="form-field-wide"><DepositSettlementFields amount={booking.depositAmount ?? vehicle?.depositAmount ?? 0} value={settlement} onChange={setSettlement} /></div>}
       {isCheckout && (booking.depositAmount ?? vehicle?.depositAmount ?? 0) > 0 && <label className="deposit-confirmation form-field-wide"><input type="checkbox" name="depositReceived" required /><span>Confirm the {formatMoney(booking.depositAmount ?? vehicle?.depositAmount ?? 0)} vehicle deposit has been collected.</span></label>}
       {!isCheckout && <div className="mileage-settlement form-field-wide" aria-live="polite"><div><span>Distance travelled</span><strong>{distanceKm.toLocaleString()} km</strong></div><div><span>Included · {rentalDays} {rentalDays === 1 ? "day" : "days"}</span><strong>{includedKm.toLocaleString()} km</strong></div><div><span>Excess mileage</span><strong>{excessKm.toLocaleString()} km × {formatMoney(mileageRate)}/km</strong></div><div className="mileage-fee"><span>Excess mileage charge</span><strong>{formatMoney(excessCharge)}</strong></div></div>}
       <InspectionChecklistFields value={checklist} onChange={setChecklist} notes={checklistNotes} onNotesChange={setChecklistNotes} previous={pickupInspection ? { checklist: pickupInspection.checklist, notes: pickupInspection.checklistNotes } : undefined} />
@@ -316,7 +397,7 @@ function PublicPrebookingInbox({ vehicles }: { vehicles: Vehicle[] }) {
 
 function BookingsWorkspace() {
   const { bookings, customers, vehicles, updateBooking, deleteBooking, canDelete, ready } = useRentalData();
-  const { pickupFor, exportContract } = useContractExport();
+  const { pickupFor, exportContract, exportReceipt } = useContractExport();
   const [open, setOpen] = useState(false);
   const [deletingBooking, setDeletingBooking] = useState<Booking | null>(null);
   const [startedBookingId, setStartedBookingId] = useState("");
@@ -331,7 +412,7 @@ function BookingsWorkspace() {
   if (!ready) return <LoadingState />;
   return <>
     <div className="list-toolbar booking-toolbar"><label className="search-box"><span aria-hidden="true">⌕</span><input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Search bookings" aria-label="Search bookings" /></label><select className="filter-select" aria-label="Filter booking status" value={filter} onChange={(event) => setFilter(event.target.value)}><option>All bookings</option><option>Confirmed</option><option>Active</option><option>Completed</option><option>Cancelled</option></select><span className="result-count">{filtered.length} {filtered.length === 1 ? "booking" : "bookings"}</span></div>
-    {bookings.length === 0 ? <EmptyState icon="▤" title="Your first booking is a few steps away" detail="Add a vehicle and a customer, then create a booking with pickup and return dates." action={<div className="empty-actions"><Link href="/fleet" className="button button-quiet">Add vehicle</Link><Link href="/customers" className="button button-quiet">Add customer</Link><button className="button button-primary" onClick={() => setOpen(true)}>＋ New booking</button></div>} /> : filtered.length === 0 ? <EmptyState icon="⌕" title="No bookings found" detail="Change the status filter or search by booking reference." /> : <TableFrame><thead><tr><th>BOOKING</th><th>CUSTOMER</th><th>VEHICLE</th><th>DATES</th><th>TOTAL</th><th>STATUS</th><th>ACTION</th></tr></thead><tbody>{filtered.map((booking) => <tr key={booking.id}><td data-label="Booking"><span className="table-primary"><DrillLink kind="booking" id={booking.id}>{booking.reference}</DrillLink></span>{booking.checkoutOdometer !== undefined && <div className="table-secondary">Pickup: {booking.checkoutOdometer.toLocaleString()} km · {booking.checkoutFuel ?? 0}% fuel</div>}{booking.checkoutNote && <div className="table-secondary">Pickup note: {booking.checkoutNote}</div>}{booking.returnOdometer !== undefined && <div className="table-secondary">Return: {booking.returnOdometer.toLocaleString()} km · {booking.returnFuel ?? 0}% fuel</div>}{booking.returnNote && <div className="table-secondary">Return note: {booking.returnNote}</div>}{booking.distanceKm !== undefined && <div className="table-secondary">Distance: {booking.distanceKm.toLocaleString()} km · included {booking.includedMileageKm?.toLocaleString()} km</div>}{(booking.excessMileageCharge ?? 0) > 0 && <div className="table-secondary">Excess mileage: {formatMoney(booking.excessMileageCharge ?? 0)}</div>}{(booking.depositAmount ?? 0) > 0 && <div className="table-secondary">Deposit: {formatMoney(booking.depositAmount ?? 0)}</div>}</td><td data-label="Customer"><DrillLink kind="customer" id={customers.find((item) => item.id === booking.customerId)?.id}>{customerName(customers.find((item) => item.id === booking.customerId))}</DrillLink></td><td data-label="Vehicle"><DrillLink kind="vehicle" id={vehicles.find((item) => item.id === booking.vehicleId)?.id}>{vehicleName(vehicles.find((item) => item.id === booking.vehicleId))}</DrillLink></td><td data-label="Dates"><span>{dateLabel(booking.startDate)}</span><div className="table-secondary">to {dateLabel(booking.endDate)}</div></td><td data-label="Total">{formatMoney(booking.total + (booking.excessMileageCharge ?? 0))}</td><td data-label="Status"><span className={`status-pill status-${slug(booking.status)}`}>{booking.status}</span></td><td data-label="Action"><div className="row-actions">{booking.status === "Confirmed" && <button className="text-action text-action-primary" onClick={() => setFlow({ booking, action: "checkout" })}>Start rental</button>}{booking.status === "Active" && <button className="text-action text-action-primary" onClick={() => setFlow({ booking, action: "return" })}>Inspect & complete</button>}{booking.status !== "Confirmed" && pickupFor(booking.id) && <button className="text-action" onClick={() => exportContract(booking.id)}>Contract</button>}{booking.status === "Confirmed" && <button className="text-action text-action-muted" onClick={() => setCancelPending(booking)}>Cancel</button>}{canDelete && <button className="text-action text-action-danger" onClick={() => setDeletingBooking(booking)}>Delete</button>}</div></td></tr>)}</tbody></TableFrame>}
+    {bookings.length === 0 ? <EmptyState icon="▤" title="Your first booking is a few steps away" detail="Add a vehicle and a customer, then create a booking with pickup and return dates." action={<div className="empty-actions"><Link href="/fleet" className="button button-quiet">Add vehicle</Link><Link href="/customers" className="button button-quiet">Add customer</Link><button className="button button-primary" onClick={() => setOpen(true)}>＋ New booking</button></div>} /> : filtered.length === 0 ? <EmptyState icon="⌕" title="No bookings found" detail="Change the status filter or search by booking reference." /> : <TableFrame><thead><tr><th>BOOKING</th><th>CUSTOMER</th><th>VEHICLE</th><th>DATES</th><th>TOTAL</th><th>STATUS</th><th>ACTION</th></tr></thead><tbody>{filtered.map((booking) => <tr key={booking.id}><td data-label="Booking"><span className="table-primary"><DrillLink kind="booking" id={booking.id}>{booking.reference}</DrillLink></span>{booking.checkoutOdometer !== undefined && <div className="table-secondary">Pickup: {booking.checkoutOdometer.toLocaleString()} km · {booking.checkoutFuel ?? 0}% fuel</div>}{booking.checkoutNote && <div className="table-secondary">Pickup note: {booking.checkoutNote}</div>}{booking.returnOdometer !== undefined && <div className="table-secondary">Return: {booking.returnOdometer.toLocaleString()} km · {booking.returnFuel ?? 0}% fuel</div>}{booking.returnNote && <div className="table-secondary">Return note: {booking.returnNote}</div>}{booking.distanceKm !== undefined && <div className="table-secondary">Distance: {booking.distanceKm.toLocaleString()} km · included {booking.includedMileageKm?.toLocaleString()} km</div>}{(booking.excessMileageCharge ?? 0) > 0 && <div className="table-secondary">Excess mileage: {formatMoney(booking.excessMileageCharge ?? 0)}</div>}{(booking.depositAmount ?? 0) > 0 && <div className="table-secondary">Deposit: {formatMoney(booking.depositAmount ?? 0)}{depositSummary(booking).state === "settled" ? ` · ${settlementText(depositSummary(booking), formatMoney)}` : booking.depositStatus === "Held" ? " · held" : ""}</div>}</td><td data-label="Customer"><DrillLink kind="customer" id={customers.find((item) => item.id === booking.customerId)?.id}>{customerName(customers.find((item) => item.id === booking.customerId))}</DrillLink></td><td data-label="Vehicle"><DrillLink kind="vehicle" id={vehicles.find((item) => item.id === booking.vehicleId)?.id}>{vehicleName(vehicles.find((item) => item.id === booking.vehicleId))}</DrillLink></td><td data-label="Dates"><span>{dateLabel(booking.startDate)}</span><div className="table-secondary">to {dateLabel(booking.endDate)}</div></td><td data-label="Total">{formatMoney(booking.total + (booking.excessMileageCharge ?? 0))}</td><td data-label="Status"><span className={`status-pill status-${slug(booking.status)}`}>{booking.status}</span></td><td data-label="Action"><div className="row-actions">{booking.status === "Confirmed" && <button className="text-action text-action-primary" onClick={() => setFlow({ booking, action: "checkout" })}>Start rental</button>}{booking.status === "Active" && <button className="text-action text-action-primary" onClick={() => setFlow({ booking, action: "return" })}>Inspect & complete</button>}{booking.status !== "Confirmed" && pickupFor(booking.id) && <button className="text-action" onClick={() => exportContract(booking.id)}>Contract</button>}{(booking.status === "Active" || booking.status === "Completed") && <button className="text-action" onClick={() => exportReceipt(booking.id)}>Receipt</button>}{booking.status === "Confirmed" && <button className="text-action text-action-muted" onClick={() => setCancelPending(booking)}>Cancel</button>}{canDelete && <button className="text-action text-action-danger" onClick={() => setDeletingBooking(booking)}>Delete</button>}</div></td></tr>)}</tbody></TableFrame>}
     <PublicPrebookingInbox vehicles={vehicles} />
     {open && <BookingsCreateOnly onClose={() => setOpen(false)} />}
     {flow && <BookingLifecycleDialog booking={flow.booking} action={flow.action} onClose={() => setFlow(null)} onStarted={setStartedBookingId} />}
@@ -367,13 +448,19 @@ function MaintenanceWorkspace() {
 }
 
 function ReportsWorkspace() {
-  const { bookings, customers, vehicles, maintenance, ready } = useRentalData();
+  const { bookings, customers, vehicles, inspections, maintenance, company, ready } = useRentalData();
+  const [period, setPeriod] = useState<PeriodKey>("this-month");
   if (!ready) return <LoadingState />;
+  const reportInput = { vehicles, bookings, customers, inspections, company, range: periodRange(period), periodLabel: periodLabels[period] };
   const completed = bookings.filter((booking) => booking.status === "Completed");
   const revenue = completed.reduce((sum, booking) => sum + booking.total + (booking.excessMileageCharge ?? 0), 0);
   const openJobs = maintenance.filter((job) => job.status !== "Completed").length;
   const committedVehicleCount = new Set(bookings.filter((booking) => ["Active", "Confirmed"].includes(booking.status)).map((booking) => booking.vehicleId)).size;
   const fleetCommitment = vehicles.length ? Math.round((committedVehicleCount / vehicles.length) * 100) : 0;
+  const mileage = vehicles.map((vehicle) => ({ vehicle, ...vehicleMileage(vehicle.id, bookings, inspections) })).filter((row) => row.lastOdometerKm > 0);
+  const bookedKm = mileage.reduce((sum, row) => sum + row.bookedKm, 0);
+  const unbookedKm = mileage.reduce((sum, row) => sum + row.unbookedKm, 0);
+  const averagePerRental = mileage.reduce((sum, row) => sum + row.trips, 0) ? Math.round(bookedKm / mileage.reduce((sum, row) => sum + row.trips, 0)) : 0;
   function downloadCsv() {
     const rows = [["Reference", "Customer", "Vehicle", "Pickup", "Return", "Distance km", "Excess mileage charge USD", "Status", "Total USD"], ...bookings.map((booking) => [booking.reference, customerName(customers.find((item) => item.id === booking.customerId)), vehicleName(vehicles.find((item) => item.id === booking.vehicleId)), booking.startDate, booking.endDate, booking.distanceKm === undefined ? "" : String(booking.distanceKm), String(booking.excessMileageCharge ?? 0), booking.status, String(booking.total + (booking.excessMileageCharge ?? 0))])];
     const csv = rows.map((row) => row.map((cell) => `"${String(cell).replaceAll('"', '""')}"`).join(",")).join("\n");
@@ -381,7 +468,12 @@ function ReportsWorkspace() {
   }
   return <>
     <div className="report-actions"><p>Live totals from records in this workspace.</p><button className="button button-quiet" onClick={downloadCsv} disabled={bookings.length === 0}>↓ Export bookings CSV</button></div>
-    <section className="report-grid"><article className="report-card"><span className="eyebrow">COMPLETED RENTALS</span><strong>{completed.length}</strong><small>closed bookings</small></article><article className="report-card"><span className="eyebrow">REVENUE RECORDED</span><strong>{formatMoney(revenue)}</strong><small>completed booking totals</small></article><article className="report-card"><span className="eyebrow">FLEET COMMITTED</span><strong>{fleetCommitment}%</strong><small>{committedVehicleCount} of {vehicles.length} vehicles with an active or upcoming booking</small><div className="report-progress"><i style={{ width: `${fleetCommitment}%` }} /></div></article><article className="report-card"><span className="eyebrow">OPEN MAINTENANCE</span><strong>{openJobs}</strong><small>jobs requiring attention</small></article></section>
+    <section className="report-pdfs panel" aria-label="PDF reports"><div><p className="eyebrow">PDF REPORTS</p><h2>Usage, distance and rentals</h2><p>Branded reports you can save as PDF or print. Rentals count in the period that contains their pickup date.</p></div>
+      <div className="report-pdf-controls"><label><span className="sr-only">Report period</span><select className="filter-select" aria-label="Report period" value={period} onChange={(event) => setPeriod(event.target.value as PeriodKey)}>{(Object.keys(periodLabels) as PeriodKey[]).filter((key) => key !== "custom").map((key) => <option key={key} value={key}>{periodLabels[key]}</option>)}</select></label>
+        <button type="button" className="button button-primary" onClick={() => exportUsageReport(reportInput)} disabled={vehicles.length === 0}>Fleet usage &amp; distance PDF</button>
+        <button type="button" className="button button-quiet" onClick={() => exportRentalsReport(reportInput)} disabled={bookings.length === 0}>Rentals &amp; revenue PDF</button></div></section>
+    <section className="report-grid"><article className="report-card"><span className="eyebrow">COMPLETED RENTALS</span><strong>{completed.length}</strong><small>closed bookings</small></article><article className="report-card"><span className="eyebrow">REVENUE RECORDED</span><strong>{formatMoney(revenue)}</strong><small>completed booking totals</small></article><article className="report-card"><span className="eyebrow">DISTANCE ON RENTALS</span><strong>{bookedKm.toLocaleString()} km</strong><small>{averagePerRental ? `average ${averagePerRental.toLocaleString()} km per rental` : "pickup-to-return readings"}</small></article><article className="report-card"><span className="eyebrow">DISTANCE OFF RENTAL</span><strong>{unbookedKm.toLocaleString()} km</strong><small>covered while vehicles weren’t booked</small></article><article className="report-card"><span className="eyebrow">FLEET COMMITTED</span><strong>{fleetCommitment}%</strong><small>{committedVehicleCount} of {vehicles.length} vehicles with an active or upcoming booking</small><div className="report-progress"><i style={{ width: `${fleetCommitment}%` }} /></div></article><article className="report-card"><span className="eyebrow">OPEN MAINTENANCE</span><strong>{openJobs}</strong><small>jobs requiring attention</small></article></section>
+    {mileage.length > 0 && <section className="panel report-table-panel"><div className="panel-heading"><div><p className="eyebrow">FLEET MILEAGE</p><h2>Distance by vehicle</h2></div><span className="result-count">{mileage.length} {mileage.length === 1 ? "vehicle" : "vehicles"} with readings</span></div><TableFrame><thead><tr><th>VEHICLE</th><th>ON RENTALS</th><th>OFF RENTAL</th><th>LAST RECORDED</th><th>TOTAL</th></tr></thead><tbody>{mileage.map((row) => <tr key={row.vehicle.id}><td data-label="Vehicle"><span className="table-primary"><DrillLink kind="vehicle" id={row.vehicle.id}>{vehicleName(row.vehicle)}</DrillLink></span><div className="table-secondary">{row.vehicle.registration}</div></td><td data-label="On rentals">{row.bookedKm.toLocaleString()} km</td><td data-label="Off rental">{row.unbookedKm.toLocaleString()} km</td><td data-label="Last recorded">{row.lastOdometerKm.toLocaleString()} km</td><td data-label="Total">{(row.bookedKm + row.unbookedKm).toLocaleString()} km</td></tr>)}</tbody></TableFrame></section>}
     {bookings.length === 0 ? <EmptyState icon="▥" title="Your reports are ready" detail="Once your first booking is created, this view will summarize completed rentals, revenue, and fleet activity." action={<Link className="button button-primary" href="/bookings">Go to bookings</Link>} /> : <section className="panel report-table-panel"><div className="panel-heading"><div><p className="eyebrow">RECENT ACTIVITY</p><h2>Latest bookings</h2></div><Link className="text-link" href="/bookings">All bookings →</Link></div><TableFrame><thead><tr><th>REFERENCE</th><th>CUSTOMER</th><th>VEHICLE</th><th>DATES</th><th>STATUS</th><th>TOTAL</th></tr></thead><tbody>{bookings.slice(0, 8).map((booking) => <tr key={booking.id}><td data-label="Reference"><span className="table-primary"><DrillLink kind="booking" id={booking.id}>{booking.reference}</DrillLink></span></td><td data-label="Customer"><DrillLink kind="customer" id={customers.find((item) => item.id === booking.customerId)?.id}>{customerName(customers.find((item) => item.id === booking.customerId))}</DrillLink></td><td data-label="Vehicle"><DrillLink kind="vehicle" id={vehicles.find((item) => item.id === booking.vehicleId)?.id}>{vehicleName(vehicles.find((item) => item.id === booking.vehicleId))}</DrillLink></td><td data-label="Dates">{dateLabel(booking.startDate)} – {dateLabel(booking.endDate)}</td><td data-label="Status"><span className={`status-pill status-${slug(booking.status)}`}>{booking.status}</span></td><td data-label="Total">{formatMoney(booking.total + (booking.excessMileageCharge ?? 0))}</td></tr>)}</tbody></TableFrame></section>}
   </>;
 }
@@ -473,9 +565,15 @@ function BookingsCreateOnly({ onClose }: { onClose: () => void }) {
   const [startDate, setStartDate] = useState(() => dateInputValue(new Date(Date.now() + 86_400_000)));
   const [endDate, setEndDate] = useState(() => dateInputValue(new Date(Date.now() + 2 * 86_400_000)));
   const [note, setNote] = useState("");
+  const [addingCustomer, setAddingCustomer] = useState(false);
+  const [customerQuery, setCustomerQuery] = useState("");
   const today = dateInputValue(new Date());
   const selectedVehicle = vehicles.find((vehicle) => vehicle.id === vehicleId);
   const selectedCustomer = customers.find((customer) => customer.id === customerId);
+  // Every saved customer is listed, A to Z. Searching only narrows the list, and the chosen customer always stays in it.
+  const sortedCustomers = [...customers].sort((a, b) => a.name.localeCompare(b.name));
+  const query = customerQuery.trim().toLowerCase();
+  const visibleCustomers = query ? sortedCustomers.filter((customer) => customer.id === customerId || `${customer.name} ${customer.phone} ${customer.email}`.toLowerCase().includes(query)) : sortedCustomers;
 
   function next() {
     setError("");
@@ -493,17 +591,21 @@ function BookingsCreateOnly({ onClose }: { onClose: () => void }) {
     addBooking({ customerId, vehicleId, startDate, endDate, total: selectedVehicle.dailyRate * nightsBetween(startDate, endDate), depositAmount: selectedVehicle.depositAmount, mileageAllowanceKmPerDay: selectedVehicle.mileageAllowanceKmPerDay, excessMileageRatePerKm: selectedVehicle.excessMileageRatePerKm, note: note.trim() });
     onClose();
   }
-  return <Modal title="Create a booking" onClose={onClose}>
-    {customers.length === 0 || vehicles.length === 0 ? <div className="setup-needed"><p>Add a renter and an available vehicle before creating a booking.</p><div className="empty-actions">{vehicles.length === 0 && <Link className="button button-quiet" href="/fleet">Add vehicle</Link>}{customers.length === 0 && <Link className="button button-quiet" href="/customers">Add customer</Link>}</div></div> : <form className="form-grid" onSubmit={save}>
+  // The customer dialog sits beside the booking form, not inside it: React lets submit events bubble through portals, which would otherwise submit the booking too.
+  return <>
+  <Modal title="Create a booking" onClose={onClose}>
+    {customers.length === 0 || vehicles.length === 0 ? <div className="setup-needed"><p>Add a renter and an available vehicle before creating a booking.</p><div className="empty-actions">{vehicles.length === 0 && <Link className="button button-quiet" href="/fleet">Add vehicle</Link>}{customers.length === 0 && <button type="button" className="button button-primary" onClick={() => setAddingCustomer(true)}>＋ Add a customer</button>}</div></div> : <form className="form-grid" onSubmit={save}>
       <div className="booking-steps" aria-label={`Booking step ${step} of 3`}>{["1. Renter & car", "2. Dates", "3. Review"].map((label, index) => <span className={step === index + 1 ? "active" : ""} key={label}>{label}</span>)}</div>
       <h3 className="booking-step-title">{step === 1 ? "Who and which car?" : step === 2 ? "When is the rental?" : "Review your booking"}</h3>
-      {step === 1 && <><Field label="Customer" wide><select value={customerId} onChange={(event) => setCustomerId(event.target.value)} required><option value="" disabled>Choose a customer</option>{customers.map((customer) => <option key={customer.id} value={customer.id}>{customer.name} · {customer.phone}</option>)}</select></Field><Field label="Vehicle" wide><select value={vehicleId} onChange={(event) => setVehicleId(event.target.value)} required><option value="" disabled>Choose a vehicle</option>{vehicles.filter((vehicle) => vehicle.status === "Available").map((vehicle) => <option key={vehicle.id} value={vehicle.id}>{vehicle.registration} · {vehicle.vehicleType} · {vehicle.make} {vehicle.model} · {formatMoney(vehicle.dailyRate)}/day</option>)}</select></Field></>}
+      {step === 1 && <><div className="form-field form-field-wide customer-picker"><span id="booking-customer-label">Customer</span>{customers.length > 5 && <input type="search" aria-label="Search saved customers" placeholder="Search by name or phone" value={customerQuery} onChange={(event) => setCustomerQuery(event.target.value)} />}<select data-dialog-initial-focus aria-labelledby="booking-customer-label" value={customerId} onChange={(event) => setCustomerId(event.target.value)} required><option value="" disabled>Choose a customer</option>{visibleCustomers.map((customer) => <option key={customer.id} value={customer.id}>{customer.name} · {customer.phone}</option>)}</select><div className="customer-picker-foot"><small>{query && visibleCustomers.length !== customers.length ? `Showing ${visibleCustomers.length} of ${customers.length} saved customers` : `${customers.length} saved ${customers.length === 1 ? "customer" : "customers"}`}{query && visibleCustomers.length === 0 ? ". No match, so add them as a new customer." : ""}</small><button type="button" className="text-action text-action-primary" onClick={() => setAddingCustomer(true)}>＋ New customer</button></div></div><Field label="Vehicle" wide><select value={vehicleId} onChange={(event) => setVehicleId(event.target.value)} required><option value="" disabled>Choose a vehicle</option>{vehicles.filter((vehicle) => vehicle.status === "Available").map((vehicle) => <option key={vehicle.id} value={vehicle.id}>{vehicle.registration} · {vehicle.vehicleType} · {vehicle.make} {vehicle.model} · {formatMoney(vehicle.dailyRate)}/day</option>)}</select></Field></>}
       {step === 2 && <><Field label="Pickup date"><input type="date" min={today} value={startDate} onChange={(event) => { const nextDate = event.target.value; setStartDate(nextDate); if (endDate <= nextDate) setEndDate(dayAfter(nextDate)); }} required /></Field><Field label="Return date"><input type="date" min={dayAfter(startDate || today)} value={endDate} onChange={(event) => setEndDate(event.target.value)} required /></Field></>}
       {step === 3 && <><p className="form-hint form-field-wide">{selectedCustomer?.name} · {vehicleName(selectedVehicle)}<br />{dateLabel(startDate)} to {dateLabel(endDate)}</p><div className="form-field-wide"><BookingPriceSummary vehicle={selectedVehicle} startDate={startDate} endDate={endDate} /></div><Field label="Booking note (optional)" wide><textarea value={note} onChange={(event) => setNote(event.target.value)} rows={2} placeholder="Pickup location or special request" /></Field></>}
       {error && <p className="form-error form-field-wide" role="alert">{error}</p>}
       <div className="form-field-wide"><div className="form-actions"><button className="button button-quiet" type="button" onClick={() => { setError(""); if (step > 1) setStep(step - 1); else onClose(); }}>{step === 1 ? "Cancel" : "Back"}</button>{step < 3 ? <button className="button button-primary" type="button" onClick={next}>Continue</button> : <button className="button button-primary" type="submit">Confirm booking</button>}</div></div>
     </form>}
-  </Modal>;
+  </Modal>
+  {addingCustomer && <CustomerDialog customer={null} onClose={() => setAddingCustomer(false)} onSaved={(created) => { setCustomerId(created.id); setCustomerQuery(""); setError(""); }} />}
+  </>;
 }
 
 function CreateVehicleBridge({ onClose }: { onClose: () => void }) {

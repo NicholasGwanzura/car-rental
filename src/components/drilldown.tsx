@@ -6,8 +6,14 @@ import { createContext, useCallback, useContext, useMemo, useState, type ReactNo
 import { WorkspaceDialog } from "@/components/workspace-dialog";
 import { InspectionPhotoGallery, countDamageMarks, countRealPhotos } from "@/components/inspection-photos";
 import { checklistRows } from "@/components/inspection-inputs";
-import { exportRentalContract } from "@/lib/rental-contract";
+import { exportRentalContract, exportRentalReceipt } from "@/lib/rental-contract";
 import { exportVehicleChecklist } from "@/lib/vehicle-checklist";
+import { exportInspectionReport, pickupFor } from "@/lib/inspection-report";
+import { DepositSettlementDialog } from "@/components/deposit-settlement";
+import { deductionLabel, depositSummary, settlementText } from "@/lib/deposit";
+import { periodLabels, periodRange } from "@/lib/profitability";
+import { exportUsageReport } from "@/lib/usage-report";
+import { unbookedBeforeBooking } from "@/lib/mileage";
 import { CustomerDialog } from "@/components/customer-dialog";
 import { whatsappDigits } from "@/lib/brand";
 import { formatMoney, nightsBetween, useRentalData, type Booking, type Customer, type Vehicle } from "@/lib/rental-data";
@@ -121,7 +127,7 @@ function DocumentThumb({ src, label }: { src?: string; label: string }) {
 }
 
 function VehicleDetail({ id }: { id: string }) {
-  const { vehicles, bookings, maintenance, expenses, inspections, canViewFinancials } = useRentalData();
+  const { vehicles, bookings, customers, maintenance, expenses, inspections, company, canViewFinancials } = useRentalData();
   const [copied, setCopied] = useState(false);
   const vehicle = vehicles.find((item) => item.id === id);
   if (!vehicle) return <Empty>This vehicle has been removed.</Empty>;
@@ -141,7 +147,7 @@ function VehicleDetail({ id }: { id: string }) {
       {vehicle.imageDataUrl ? <Image className="drill-hero-image" src={vehicle.imageDataUrl} alt={`${vehicle.make} ${vehicle.model}`} width={320} height={210} unoptimized /> : <div className="drill-hero-image drill-hero-placeholder" aria-hidden="true">{vehicle.make.slice(0, 1)}</div>}
       <div><div className="drill-hero-tags"><span className="registration-tag">{vehicle.registration}</span><span className={statusClass(vehicle.status)}>{vehicle.status}</span></div>
         <Facts items={[["Type", vehicle.vehicleType], ["Year", vehicle.year], ["Transmission", vehicle.transmission], ["Day rate", `${formatMoney(vehicle.dailyRate)} / day`], ["Deposit", formatMoney(vehicle.depositAmount)], ["Mileage", `${vehicle.mileageAllowanceKmPerDay} km/day · ${formatMoney(vehicle.excessMileageRatePerKm)}/km extra`], ["Fuel use", vehicle.fuelConsumptionLPer100Km ? `${vehicle.fuelConsumptionLPer100Km} L/100 km` : undefined]]} />
-        <button type="button" className="button button-quiet" onClick={() => void copyLink()}>{copied ? "Link copied" : "Copy pre-book link"}</button>
+        <div className="drill-actions"><button type="button" className="button button-quiet" onClick={() => void copyLink()}>{copied ? "Link copied" : "Copy pre-book link"}</button><button type="button" className="button button-quiet" onClick={() => exportUsageReport({ vehicles, bookings, customers, inspections, company, range: periodRange("all"), periodLabel: periodLabels.all, vehicleId: id })} title="Every rental, the distance driven on each, and distance driven while not booked">Usage &amp; distance PDF</button></div>
       </div>
     </div>
     <Stats items={[["Rentals", String(earned.length)], ["Rental days", String(days)], ["Income", formatMoney(income)], ...(canViewFinancials ? [["Costs", formatMoney(totalCosts)], ["Net", formatMoney(income - totalCosts)]] as [string, string][] : [])]} />
@@ -175,7 +181,8 @@ function CustomerDetail({ id }: { id: string }) {
 }
 
 function BookingDetail({ id }: { id: string }) {
-  const { bookings, customers, vehicles, inspections, company } = useRentalData();
+  const { bookings, customers, vehicles, inspections, company, updateBooking } = useRentalData();
+  const [settling, setSettling] = useState(false);
   const booking = bookings.find((item) => item.id === id);
   if (!booking) return <Empty>This booking has been removed.</Empty>;
   const customer = customers.find((item) => item.id === booking.customerId);
@@ -184,16 +191,24 @@ function BookingDetail({ id }: { id: string }) {
   const pickup = [...own].reverse().find((item) => item.stage === "Pickup");
   const returned = [...own].reverse().find((item) => item.stage === "Return");
   const days = nightsBetween(booking.startDate, booking.endDate);
+  const deposit = depositSummary(booking, vehicle?.depositAmount ?? 0);
+  const offRentalBefore = unbookedBeforeBooking(booking, bookings, inspections);
   return <>
     <div className="drill-hero-tags"><span className={statusClass(booking.status)}>{booking.status}</span><span className={`status-pill ${booking.paymentStatus === "Paid" ? "status-available" : "status-active"}`}>{booking.paymentStatus === "Paid" ? "Paid" : "Payment due"}</span></div>
     <div className="drill-parties">
       <div><span>CUSTOMER</span><DrillLink kind="customer" id={customer?.id}><strong>{customer?.name ?? "Customer removed"}</strong></DrillLink><small>{customer?.phone}</small></div>
       <div><span>VEHICLE</span><DrillLink kind="vehicle" id={vehicle?.id}><strong>{vehicle ? `${vehicle.make} ${vehicle.model}` : "Vehicle removed"}</strong></DrillLink><small>{vehicle?.registration}</small></div>
     </div>
-    <Stats items={[["Rental", formatMoney(booking.total)], ["Excess mileage", formatMoney(booking.excessMileageCharge ?? 0)], ["Total", formatMoney(booking.total + (booking.excessMileageCharge ?? 0))], ["Deposit", `${formatMoney(booking.depositAmount ?? 0)}${booking.depositStatus && booking.depositStatus !== "None" ? ` · ${booking.depositStatus}` : ""}`]]} />
-    <Facts items={[["Dates", `${longDate(booking.startDate)} – ${longDate(booking.endDate)} · ${days} ${days === 1 ? "day" : "days"}`], ["Pickup", booking.checkoutOdometer !== undefined ? `${booking.checkoutOdometer.toLocaleString()} km · ${booking.checkoutFuel ?? 0}% fuel` : undefined], ["Pickup note", booking.checkoutNote], ["Return", booking.returnOdometer !== undefined ? `${booking.returnOdometer.toLocaleString()} km · ${booking.returnFuel ?? 0}% fuel` : undefined], ["Return note", booking.returnNote], ["Distance", booking.distanceKm !== undefined ? `${booking.distanceKm.toLocaleString()} km (${(booking.includedMileageKm ?? 0).toLocaleString()} km included)` : undefined], ["Note", booking.note]]} />
-    <div className="drill-actions">{pickup && <button type="button" className="button button-primary" onClick={() => exportRentalContract({ booking, customer, vehicle, company, pickup })}>Export contract</button>}{pickup && <button type="button" className="button button-quiet" onClick={() => exportVehicleChecklist({ booking, customer, vehicle, company, out: pickup, in: returned })}>Export checklist{returned ? " (out & in)" : ""}</button>}<Link className="button button-quiet" href="/billing">Open billing</Link></div>
-    <Section title="Inspections" count={own.length}>{own.length ? own.map((item) => <div className="drill-inspection" key={item.id}><div className="drill-inspection-head"><strong>{item.stage ?? "Inspection"} · {longDate(item.inspectionDate)}</strong><DrillLink kind="inspection" id={item.id}>Full details ›</DrillLink></div><InspectionPhotoGallery photos={item.photos} compact /></div>) : <Empty>No pickup or return inspection yet.</Empty>}</Section>
+    <Stats items={[["Rental", formatMoney(booking.total)], ["Excess mileage", formatMoney(booking.excessMileageCharge ?? 0)], ["Total", formatMoney(booking.total + (booking.excessMileageCharge ?? 0))], ["Deposit", deposit.state === "settled" ? `${formatMoney(deposit.amount)} · settled` : `${formatMoney(booking.depositAmount ?? 0)}${booking.depositStatus && booking.depositStatus !== "None" ? ` · ${booking.depositStatus === "Held" ? "held" : booking.depositStatus}` : ""}`]]} />
+    {deposit.state === "settled" && <div className="deposit-settled">
+      <div className="deposit-settled-head"><strong>Deposit settled{deposit.settledAt ? ` · ${longDate(deposit.settledAt)}` : ""}</strong><span>{settlementText(deposit, formatMoney)}</span></div>
+      {deposit.deductions.length > 0 && <ul>{deposit.deductions.map((item) => <li key={item.id}><span>{deductionLabel(item)}</span><b>−{formatMoney(item.amount)}</b></li>)}</ul>}
+      <p>Refund to customer: <strong>{formatMoney(deposit.refund)}</strong></p>
+    </div>}
+    <Facts items={[["Dates", `${longDate(booking.startDate)} – ${longDate(booking.endDate)} · ${days} ${days === 1 ? "day" : "days"}`], ["Pickup", booking.checkoutOdometer !== undefined ? `${booking.checkoutOdometer.toLocaleString()} km · ${booking.checkoutFuel ?? 0}% fuel` : undefined], ["Off rental before pickup", offRentalBefore !== null ? `${offRentalBefore.toLocaleString()} km driven while not on a booking` : undefined], ["Pickup note", booking.checkoutNote], ["Return", booking.returnOdometer !== undefined ? `${booking.returnOdometer.toLocaleString()} km · ${booking.returnFuel ?? 0}% fuel` : undefined], ["Return note", booking.returnNote], ["Distance", booking.distanceKm !== undefined ? `${booking.distanceKm.toLocaleString()} km (${(booking.includedMileageKm ?? 0).toLocaleString()} km included)` : undefined], ["Note", booking.note]]} />
+    <div className="drill-actions">{pickup && <button type="button" className="button button-primary" onClick={() => exportRentalContract({ booking, customer, vehicle, company, pickup })}>Export contract</button>}{(booking.status === "Active" || booking.status === "Completed") && <button type="button" className="button button-quiet" onClick={() => exportRentalReceipt({ booking, customer, vehicle, company, pickup })}>Download receipt</button>}{booking.status === "Completed" && deposit.state === "held" && <button type="button" className="button button-quiet" onClick={() => setSettling(true)}>Settle {formatMoney(deposit.amount)} deposit</button>}{pickup && <button type="button" className="button button-quiet" onClick={() => exportVehicleChecklist({ booking, customer, vehicle, company, out: pickup, in: returned })}>Export checklist{returned ? " (out & in)" : ""}</button>}<Link className="button button-quiet" href="/billing">Open billing</Link></div>
+    {settling && <DepositSettlementDialog booking={booking} deposit={deposit.amount} onSave={(changes) => updateBooking(booking.id, changes)} onClose={() => setSettling(false)} />}
+    <Section title="Inspections" count={own.length}>{own.length ? own.map((item) => <div className="drill-inspection" key={item.id}><div className="drill-inspection-head"><strong>{item.stage ?? "Inspection"} · {longDate(item.inspectionDate)}</strong><span className="drill-inspection-links"><button type="button" className="drill-link" onClick={() => exportInspectionReport({ inspection: item, company, customer, vehicle, booking, pickup: pickupFor(item, inspections) })}>Download report</button><DrillLink kind="inspection" id={item.id}>Full details ›</DrillLink></span></div><InspectionPhotoGallery photos={item.photos} compact /></div>) : <Empty>No pickup or return inspection yet.</Empty>}</Section>
   </>;
 }
 
@@ -206,6 +221,7 @@ function InspectionDetail({ id }: { id: string }) {
   const booking = bookings.find((record) => record.id === item.bookingId);
   const issues = checklistRows(item.checklist).filter((entry) => item.checklist?.[entry.key] === "attention");
   return <>
+    <div className="drill-actions"><button type="button" className="button button-primary" onClick={() => exportInspectionReport({ inspection: item, company, customer, vehicle, booking, pickup: pickupFor(item, inspections) })}>Download inspection report</button></div>
     <div className="drill-parties">
       <div><span>CUSTOMER</span><DrillLink kind="customer" id={customer?.id}><strong>{customer?.name ?? "Customer removed"}</strong></DrillLink></div>
       <div><span>VEHICLE</span><DrillLink kind="vehicle" id={vehicle?.id}><strong>{vehicle ? `${vehicle.make} ${vehicle.model} · ${vehicle.registration}` : "Vehicle removed"}</strong></DrillLink></div>

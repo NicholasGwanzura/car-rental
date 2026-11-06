@@ -7,6 +7,7 @@ import { AppShell, PageTopbar } from "@/components/app-shell";
 import { WorkspaceDialog } from "@/components/workspace-dialog";
 import { BookingRows, DrillLink, useDrilldown } from "@/components/drilldown";
 import { compressIdentityImage } from "@/lib/identity-image";
+import { receiptProblem } from "@/lib/expense-rules";
 import { costEntries, inRange, incomeEntries, monthlyTrend, periodLabels, periodRange, summarize, type CostEntry, type DateRange, type MonthPoint, type PeriodKey } from "@/lib/profitability";
 import { expenseCategories, expensePaymentMethods, formatMoney, useRentalData, type Expense, type ExpenseCategory, type Vehicle } from "@/lib/rental-data";
 
@@ -62,7 +63,7 @@ function TrendChart({ points, onSelect }: { points: MonthPoint[]; onSelect: (poi
   const max = ticks[ticks.length - 1];
   if (!points.some((point) => point.income || point.costs)) return <p className="profit-empty-note">No income or expenses in this period yet.</p>;
   return <div className="trend-chart" role="group" aria-label="Monthly rental income and expenses">
-    <div className="trend-legend" aria-hidden="true"><span><i className="swatch swatch-income" />Rental income</span><span><i className="swatch swatch-costs" />Expenses</span></div>
+    <div className="trend-legend" aria-hidden="true"><span><i className="swatch swatch-income" />Income</span><span><i className="swatch swatch-costs" />Expenses</span></div>
     <div className="trend-body">
       <div className="trend-axis">{[...ticks].reverse().map((tick) => <span key={tick}>{compactMoney(tick)}</span>)}</div>
       <div className="trend-plot">
@@ -112,11 +113,13 @@ function ExpenseDialog({ expense, vehicles, onClose }: { expense: Expense | null
       const amount = Number(form.get("amount"));
       if (!Number.isFinite(amount) || amount <= 0) throw new Error("Enter an amount above zero.");
       const file = form.get("receipt");
-      let receiptDataUrl = form.get("removeReceipt") === "on" ? undefined : expense?.receiptDataUrl;
+      let receiptDataUrl = expense?.receiptDataUrl;
       if (file instanceof File && file.size) {
         if (!file.type.startsWith("image/") || file.size > 15 * 1024 * 1024) throw new Error("Choose a receipt image under 15 MB.");
         receiptDataUrl = await compressIdentityImage(file);
       }
+      const missingReceipt = receiptProblem({ receiptDataUrl });
+      if (missingReceipt) throw new Error(missingReceipt);
       const vehicleId = String(form.get("vehicleId"));
       const changes = {
         date: String(form.get("date")),
@@ -142,8 +145,8 @@ function ExpenseDialog({ expense, vehicles, onClose }: { expense: Expense | null
       <label className="form-field"><span>Paid to</span><input name="payee" placeholder="Supplier, garage or person" defaultValue={expense?.payee ?? ""} required /></label>
       <label className="form-field"><span>Payment method</span><select name="paymentMethod" defaultValue={expense?.paymentMethod ?? "Cash"}>{expensePaymentMethods.map((method) => <option key={method}>{method}</option>)}</select></label>
       <label className="form-field form-field-wide"><span>Description <small>(optional)</small></span><textarea name="description" rows={2} placeholder="What was this for?" defaultValue={expense?.description ?? ""} /></label>
-      <label className="form-field form-field-wide"><span>Receipt photo <small>(optional)</small></span><input name="receipt" type="file" accept="image/*" capture="environment" /></label>
-      {expense?.receiptDataUrl && <div className="form-field-wide fleet-image-current"><Image src={expense.receiptDataUrl} alt="Current receipt" width={90} height={120} unoptimized /><label><input type="checkbox" name="removeReceipt" /> Remove current receipt</label></div>}
+      <label className="form-field form-field-wide"><span>Receipt photo <small>(required)</small></span><input name="receipt" type="file" accept="image/*" capture="environment" required={!expense?.receiptDataUrl} /><small>{expense?.receiptDataUrl ? "A receipt is on file. Choose a new photo only to replace it." : "Photograph the receipt, invoice or till slip. An expense can’t be saved without one."}</small></label>
+      {expense?.receiptDataUrl && <div className="form-field-wide fleet-image-current"><Image src={expense.receiptDataUrl} alt="Current receipt" width={90} height={120} unoptimized /><span className="table-secondary">Current receipt</span></div>}
       <p className="form-hint form-field-wide">Choose a vehicle for costs that belong to one car, so its profit is accurate. Leave it as general business for office, staff and other shared costs. Completed maintenance jobs are counted automatically.</p>
       {error && <p className="form-error form-field-wide" role="alert">{error}</p>}
       <div className="form-field-wide"><div className="form-actions"><button className="button button-quiet" type="button" onClick={onClose}>Cancel</button><button className="button button-primary" type="submit" disabled={busy}>{busy ? "Saving…" : expense ? "Save changes" : "Add expense"}</button></div></div>
@@ -224,14 +227,15 @@ export function ExpensesWorkspace() {
       ["Rental income", summary.income.toFixed(2)],
       ["  Collected", summary.collected.toFixed(2)],
       ["  Outstanding", summary.outstanding.toFixed(2)],
+      ["Deposit money kept (damage, fuel, fines…)", summary.depositKept.toFixed(2)],
       ["Expenses", summary.costs.toFixed(2)],
       ...summary.byCategory.map((row) => [`  ${row.category}`, row.amount.toFixed(2)]),
       ["Net profit", summary.net.toFixed(2)],
       ["Profit margin", percent(summary.margin)],
       [],
-      ["Vehicle", "Rentals", "Rental days", "Income", "Direct costs", "Net", "Margin"],
-      ...summary.byVehicle.map((row) => [vehicleLabel(row.vehicle), row.bookings, row.rentalDays, row.income.toFixed(2), row.costs.toFixed(2), row.net.toFixed(2), percent(row.margin)]),
-      ["General business overhead", "", "", "", summary.overhead.toFixed(2), (-summary.overhead).toFixed(2), ""],
+      ["Vehicle", "Rentals", "Rental days", "Income", "Deposit kept", "Direct costs", "Net", "Margin"],
+      ...summary.byVehicle.map((row) => [vehicleLabel(row.vehicle), row.bookings, row.rentalDays, row.income.toFixed(2), row.depositKept.toFixed(2), row.costs.toFixed(2), row.net.toFixed(2), percent(row.margin)]),
+      ["General business overhead", "", "", "", "", summary.overhead.toFixed(2), (-summary.overhead).toFixed(2), ""],
     ]);
   }
   function exportExpenses() {
@@ -289,8 +293,9 @@ export function ExpensesWorkspace() {
             <section className="panel finance-panel"><div className="panel-heading"><div><p className="eyebrow">BOTTOM LINE</p><h2>Profit and loss</h2></div></div>
               <dl className="pnl-list">
                 <div><dt><button type="button" className="drill-link" onClick={openIncome}>Rental income</button></dt><dd>{formatMoney(summary.income)}</dd></div>
+                {summary.depositKept > 0 && <div><dt>Deposit money kept <small className="pnl-hint">damage, fuel, fines…</small></dt><dd>+{formatMoney(summary.depositKept)}</dd></div>}
                 <div><dt>Vehicle costs</dt><dd>−{formatMoney(summary.directCosts)}</dd></div>
-                <div className="pnl-subtotal"><dt>Vehicle profit</dt><dd>{signedMoney(summary.income - summary.directCosts)}</dd></div>
+                <div className="pnl-subtotal"><dt>Vehicle profit</dt><dd>{signedMoney(summary.income + summary.depositKept - summary.directCosts)}</dd></div>
                 <div><dt><button type="button" className="drill-link" onClick={openOverhead}>General business overhead</button></dt><dd>−{formatMoney(summary.overhead)}</dd></div>
                 <div className={`pnl-total${summary.net < 0 ? " is-loss" : ""}`}><dt>Net profit</dt><dd>{signedMoney(summary.net)}</dd></div>
               </dl>
@@ -298,8 +303,8 @@ export function ExpensesWorkspace() {
           </div>
 
           <section className="panel finance-panel finance-vehicles"><div className="panel-heading"><div><p className="eyebrow">BY VEHICLE</p><h2>Profit per car</h2></div><span className="result-count">Overhead not allocated</span></div>
-            {summary.byVehicle.length === 0 ? <p className="profit-empty-note">Add vehicles and bookings to see profit per car.</p> : <div className="data-table-wrap"><table className="data-table finance-table"><thead><tr><th>VEHICLE</th><th>RENTALS</th><th>RENTAL DAYS</th><th>INCOME</th><th>VEHICLE COSTS</th><th>NET</th><th>MARGIN</th><th>NET / RENTAL DAY</th></tr></thead><tbody>
-              {summary.byVehicle.map((row) => <tr key={row.vehicleId}><td data-label="Vehicle"><div className="table-primary"><DrillLink kind="vehicle" id={row.vehicle?.id}>{row.vehicle ? `${row.vehicle.make} ${row.vehicle.model}` : "Removed vehicle"}</DrillLink></div><div className="table-secondary">{row.vehicle?.registration ?? ""}</div></td><td data-label="Rentals">{row.bookings}</td><td data-label="Rental days">{row.rentalDays}</td><td data-label="Income">{formatMoney(row.income)}</td><td data-label="Vehicle costs">{formatMoney(row.costs)}</td><td data-label="Net"><span className={row.net < 0 ? "money-loss" : "money-gain"}>{signedMoney(row.net)}</span>{row.net < 0 && <span className="loss-tag">Loss</span>}</td><td data-label="Margin">{percent(row.margin)}</td><td data-label="Net / rental day">{row.rentalDays ? signedMoney(Math.round(row.net / row.rentalDays)) : "—"}</td></tr>)}
+            {summary.byVehicle.length === 0 ? <p className="profit-empty-note">Add vehicles and bookings to see profit per car.</p> : <div className="data-table-wrap"><table className="data-table finance-table"><thead><tr><th>VEHICLE</th><th>RENTALS</th><th>RENTAL DAYS</th><th>INCOME</th><th>DEPOSIT KEPT</th><th>VEHICLE COSTS</th><th>NET</th><th>MARGIN</th><th>NET / RENTAL DAY</th></tr></thead><tbody>
+              {summary.byVehicle.map((row) => <tr key={row.vehicleId}><td data-label="Vehicle"><div className="table-primary"><DrillLink kind="vehicle" id={row.vehicle?.id}>{row.vehicle ? `${row.vehicle.make} ${row.vehicle.model}` : "Removed vehicle"}</DrillLink></div><div className="table-secondary">{row.vehicle?.registration ?? ""}</div></td><td data-label="Rentals">{row.bookings}</td><td data-label="Rental days">{row.rentalDays}</td><td data-label="Income">{formatMoney(row.income)}</td><td data-label="Deposit kept">{row.depositKept > 0 ? formatMoney(row.depositKept) : "—"}</td><td data-label="Vehicle costs">{formatMoney(row.costs)}</td><td data-label="Net"><span className={row.net < 0 ? "money-loss" : "money-gain"}>{signedMoney(row.net)}</span>{row.net < 0 && <span className="loss-tag">Loss</span>}</td><td data-label="Margin">{percent(row.margin)}</td><td data-label="Net / rental day">{row.rentalDays ? signedMoney(Math.round(row.net / row.rentalDays)) : "—"}</td></tr>)}
             </tbody></table></div>}
           </section>
         </> : <>
@@ -320,7 +325,7 @@ export function ExpensesWorkspace() {
                 <td data-label="Vehicle">{entry.vehicleId ? <DrillLink kind="vehicle" id={vehicles.find((vehicle) => vehicle.id === entry.vehicleId)?.id}>{vehicleLabel(vehicles.find((vehicle) => vehicle.id === entry.vehicleId))}</DrillLink> : <span className="table-secondary">General business</span>}</td>
                 <td data-label="Payment">{record?.paymentMethod ?? "—"}</td>
                 <td data-label="Amount"><strong>{formatMoney(entry.amount)}</strong></td>
-                <td data-label="Actions"><div className="row-actions">{record ? <>{record.receiptDataUrl && <button className="text-action" type="button" onClick={() => setViewingReceipt(record)}>Receipt</button>}<button className="text-action" type="button" onClick={() => { setEditing(record); setDialogOpen(true); }}>Edit</button><button className="text-action text-action-danger" type="button" onClick={() => setDeleting(record)}>Delete</button></> : <Link className="text-action" href="/maintenance">View job</Link>}</div></td>
+                <td data-label="Actions"><div className="row-actions">{record ? <>{record.receiptDataUrl ? <button className="text-action" type="button" onClick={() => setViewingReceipt(record)}>Receipt</button> : <button className="text-action text-action-danger" type="button" onClick={() => { setEditing(record); setDialogOpen(true); }}>Add receipt</button>}<button className="text-action" type="button" onClick={() => { setEditing(record); setDialogOpen(true); }}>Edit</button><button className="text-action text-action-danger" type="button" onClick={() => setDeleting(record)}>Delete</button></> : <Link className="text-action" href="/maintenance">View job</Link>}</div></td>
               </tr>;
             })}</tbody></table></div>}
         </>}
@@ -328,6 +333,6 @@ export function ExpensesWorkspace() {
     </main>
     {dialogOpen && <ExpenseDialog expense={editing} vehicles={vehicles} onClose={() => { setDialogOpen(false); setEditing(null); }} />}
     {deleting && <WorkspaceDialog title="Delete this expense?" eyebrow="PERMANENT DELETE" onClose={() => setDeleting(null)}><p className="modal-description">{formatMoney(deleting.amount)} paid to {deleting.payee || "this payee"} on {shortDate(deleting.date)} will be removed from your expenses and profit figures. This can’t be undone.</p><div className="form-actions"><button className="button button-quiet" type="button" data-dialog-initial-focus onClick={() => setDeleting(null)}>Keep it</button><button className="button button-danger" type="button" onClick={() => { deleteExpense(deleting.id); setDeleting(null); }}>Delete expense</button></div></WorkspaceDialog>}
-    {viewingReceipt?.receiptDataUrl && <WorkspaceDialog title="Receipt" eyebrow={`${formatMoney(viewingReceipt.amount)} · ${viewingReceipt.payee}`} onClose={() => setViewingReceipt(null)}><Image className="receipt-image" src={viewingReceipt.receiptDataUrl} alt={`Receipt from ${viewingReceipt.payee}`} width={800} height={1100} unoptimized /></WorkspaceDialog>}
+    {viewingReceipt?.receiptDataUrl && <WorkspaceDialog title="Receipt" eyebrow={`${formatMoney(viewingReceipt.amount)} · ${viewingReceipt.payee}`} onClose={() => setViewingReceipt(null)}><Image className="receipt-image" src={viewingReceipt.receiptDataUrl} alt={`Receipt from ${viewingReceipt.payee}`} width={800} height={1100} unoptimized /><div className="form-actions"><a className="button button-primary" href={viewingReceipt.receiptDataUrl} download={`receipt-${viewingReceipt.date}-${viewingReceipt.payee.replace(/[^a-z0-9]+/gi, "-").toLowerCase() || "expense"}.jpg`}>Download receipt</a></div></WorkspaceDialog>}
   </AppShell>;
 }

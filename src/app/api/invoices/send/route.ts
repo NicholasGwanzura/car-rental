@@ -1,11 +1,23 @@
 import { NextResponse } from "next/server";
 import { brandedCompany } from "@/lib/brand";
 import { emailConfigured, sendEmail } from "@/lib/email";
+import { deductionLabel, depositSummary, settlementText } from "@/lib/deposit";
+import type { Booking } from "@/lib/rental-data";
 import { invoiceEmail } from "@/lib/email-templates";
 import { hasWorkspaceSession } from "@/lib/workspace-auth";
 import { loadWorkspaceData } from "@/lib/workspace-db";
 
 export const runtime = "nodejs";
+
+const dollars = (value: number) => `$${value.toLocaleString("en-US", { maximumFractionDigits: 2 })}`;
+
+/** "$70 returned, $30 kept for damage" for a settled deposit; empty otherwise. */
+function depositOutcome(booking: Record<string, unknown>) {
+  const summary = depositSummary(booking as unknown as Booking);
+  if (summary.state !== "settled") return undefined;
+  const reasons = summary.deductions.map(deductionLabel).join("; ").toLowerCase();
+  return `${settlementText(summary, dollars)}${reasons ? ` for ${reasons}` : ""}`;
+}
 
 const EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
@@ -33,7 +45,7 @@ export async function POST(request: Request) {
     // Same prefix rule as the invoice on screen.
     const invoiceNo = `${(company.invoicePrefix || "CR").trim()}-${String(booking.reference ?? "").replace(/^BK-/, "")}`;
     const vehicleName = vehicle ? `${vehicle.make ?? ""} ${vehicle.model ?? ""}`.trim() + (vehicle.registration ? ` · ${vehicle.registration}` : "") : "Vehicle rental";
-    const content = invoiceEmail({ company, customerName: String(customer.name ?? ""), invoiceNo, vehicleName, startDate: String(booking.startDate), endDate: String(booking.endDate), rentalTotal, excess, excessKm: Number(booking.excessMileageKm) || 0, excessRate: Number(booking.excessMileageRatePerKm) || 0, deposit, depositStatus: typeof booking.depositStatus === "string" ? booking.depositStatus : undefined, paid });
+    const content = invoiceEmail({ company, customerName: String(customer.name ?? ""), invoiceNo, vehicleName, startDate: String(booking.startDate), endDate: String(booking.endDate), rentalTotal, excess, excessKm: Number(booking.excessMileageKm) || 0, excessRate: Number(booking.excessMileageRatePerKm) || 0, deposit, depositStatus: typeof booking.depositStatus === "string" ? booking.depositStatus : undefined, depositOutcome: depositOutcome(booking), paid });
 
     const result = await sendEmail({
       to: customerEmail,

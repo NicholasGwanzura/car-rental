@@ -1236,6 +1236,7 @@ button.upcoming-row .upcoming-details{text-align:left}
 .odometer-field{display:grid;gap:10px}
 .odometer-field>.form-field input{font-size:15px;font-weight:700;font-variant-numeric:tabular-nums;letter-spacing:.4px}
 .odometer-warning{margin:0;padding:9px 12px;border:1px solid #ead9a8;border-radius:8px;background:#fdf7e4;color:#8a6410;font-size:11px;font-weight:600}
+.odometer-jump-note{margin:0;padding:9px 12px;border:1px solid #cfe3d8;border-radius:8px;background:#f0f7f3;color:#205f4e;font-size:11px;font-weight:600}
 .odometer-photo{display:grid;gap:6px}
 .odometer-photo-label{display:flex;flex-wrap:wrap;gap:2px 8px;justify-content:space-between;align-items:baseline;color:#68756d;font-size:11px;font-weight:600}
 .odometer-photo-label small{color:#8e9992;font-weight:500}
@@ -1252,3 +1253,100 @@ button.upcoming-row .upcoming-details{text-align:left}
 .inspection-odometer-photo{display:grid;gap:6px;margin-top:10px}
 .inspection-odometer-photo span{color:var(--muted);font-size:11px;font-weight:800;letter-spacing:.6px}
 .inspection-odometer-photo img{width:100%;max-width:320px;max-height:240px;object-fit:cover;border:1px solid var(--line);border-radius:10px}
+
+/* Customers as cards */
+.customer-filters{display:flex;flex-wrap:wrap;gap:8px;margin:0 0 14px}
+.customer-filter{display:inline-flex;align-items:center;gap:7px;min-height:38px;padding:0 14px;border:1px solid var(--line);border-radius:999px;background:#fff;color:#4a5750;font-size:13px;font-weight:700;cursor:pointer}
+.customer-filter span{min-width:20px;padding:1px 6px;border-radius:999px;background:#eef3ef;color:#4a5750;font-size:11px;text-align:center}
+.customer-filter.is-active{border-color:#1f715e;background:#e8f2ec;color:#145747}
+.customer-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(310px,1fr));gap:14px}
+.customer-card{position:relative;display:flex;flex-direction:column;gap:12px;padding:16px;border:1px solid var(--line);border-radius:14px;background:#fff;box-shadow:0 1px 2px rgba(16,40,30,.04),0 10px 28px rgba(16,40,30,.04);transition:border-color .15s ease,transform .15s ease}
+.customer-card:hover{border-color:#b9cdc2;transform:translateY(-1px)}
+/* The whole card is one tap target (the stretched button); links and actions sit above it. */
+.customer-card-open{position:absolute;inset:0;z-index:0;border:0;border-radius:14px;background:transparent;cursor:pointer}
+.customer-card-open:focus-visible{outline:2px solid #1f715e;outline-offset:2px}
+.customer-card>*:not(.customer-card-open){position:relative;z-index:1;pointer-events:none}
+.customer-card a,.customer-card .customer-card-actions button{pointer-events:auto}
+.customer-card-head{display:flex;align-items:center;gap:12px}
+.customer-card-head>div{min-width:0;flex:1}
+.customer-card-head h3{margin:0;overflow:hidden;color:var(--ink);font-size:16px;font-weight:800;text-overflow:ellipsis;white-space:nowrap}
+.customer-card-head small{color:var(--muted);font-size:12px}
+.customer-avatar{display:grid;place-items:center;width:42px;height:42px;flex:none;border-radius:12px;background:#e8f2ec;color:#1f715e;font-size:15px;font-weight:800}
+.customer-rental-note{margin:-4px 0 0;color:#8a5a12;font-size:12px;font-weight:700}
+.customer-contact{display:grid;gap:6px;margin:0;padding:0;list-style:none}
+.customer-contact li{display:grid;grid-template-columns:64px 1fr;gap:8px;font-size:13px;line-height:1.4}
+.customer-contact li>span{color:var(--muted);font-size:12px;font-weight:700}
+.customer-contact a{color:#1f715e;font-weight:600;overflow-wrap:anywhere}
+.customer-contact b{font-weight:600;overflow-wrap:anywhere}
+.customer-card em{color:#a5611a;font-size:12px;font-style:normal;font-weight:600}
+.customer-facts{display:grid;grid-template-columns:1fr 1fr;gap:8px 12px;margin:0;padding:10px 0;border-top:1px solid var(--line);border-bottom:1px solid var(--line)}
+.customer-facts dt{color:var(--muted);font-size:11px;font-weight:700;letter-spacing:.4px;text-transform:uppercase}
+.customer-facts dd{margin:2px 0 0;font-size:13px;overflow-wrap:anywhere}
+.customer-facts .is-wide{grid-column:1/-1}
+.customer-docs{display:flex;gap:10px}
+.customer-doc{display:flex;align-items:center;gap:8px;min-width:0;flex:1}
+.customer-doc img{width:56px;height:40px;object-fit:cover;border-radius:7px;background:#f2f5f3}
+.customer-doc>span{display:grid;place-items:center;width:56px;height:40px;border:1px dashed #e0b87a;border-radius:7px;background:#fff8ee;color:#a5611a;font-weight:800}
+.customer-doc small{color:#4a5750;font-size:12px;font-weight:600}
+.customer-doc.is-missing small{color:#a5611a}
+.customer-stats{display:grid;grid-template-columns:repeat(3,1fr);gap:8px}
+.customer-stats div{padding:8px 10px;border-radius:10px;background:#f8faf9}
+.customer-stats span{display:block;color:var(--muted);font-size:11px;font-weight:700}
+.customer-stats strong{display:block;margin-top:2px;font-size:15px;font-variant-numeric:tabular-nums}
+.customer-stats .is-owing{background:#fff8ee}.customer-stats .is-owing strong{color:#a5611a}
+.customer-missing{margin:0;padding:8px 10px;border-radius:8px;background:#fff8ee;color:#8a5a12;font-size:12px;font-weight:600}
+.customer-card-actions{display:flex;align-items:center;gap:14px}
+.customer-card-actions .text-action{min-height:36px}
+.customer-card-hint{margin-left:auto;color:#1f715e;font-size:12px;font-weight:700}
+@media(max-width:640px){.customer-grid{grid-template-columns:1fr}.customer-filters{flex-wrap:nowrap;overflow-x:auto;padding-bottom:4px}.customer-filter{flex:none}.customer-card .customer-card-actions .text-action{min-height:44px;padding:0 12px}}
+.customer-picker{gap:6px}
+.customer-picker-foot{display:flex;align-items:center;justify-content:space-between;gap:10px}
+.customer-picker-foot small{color:var(--muted);font-size:12px}
+
+.panel-heading-actions{display:flex;align-items:center;flex-wrap:wrap;justify-content:flex-end;gap:8px}
+.panel-heading-actions .button{height:34px;font-size:12px}
+.drill-inspection-links{display:flex;align-items:center;gap:14px}
+.drill-inspection-links .drill-link{color:#1f715e;font-weight:700}
+
+/* PDF reports on the Reports page */
+.report-pdfs{display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:16px;min-height:0;margin-bottom:16px;padding:16px 18px}
+.report-pdfs h2{margin:2px 0 4px;font-size:16px}
+.report-pdfs p{margin:0;color:var(--muted);font-size:13px}
+.report-pdfs .eyebrow{margin-bottom:0}
+.report-pdf-controls{display:flex;flex-wrap:wrap;align-items:center;gap:8px}
+@media(max-width:640px){.report-pdf-controls{width:100%}.report-pdf-controls .button,.report-pdf-controls .filter-select,.report-pdf-controls label{flex:1 1 100%;width:100%}}
+
+/* Deposit settlement */
+.deposit-fields{min-width:0;margin:0;padding:14px;border:1px solid #e3e9e5;border-radius:12px}
+.deposit-fields legend{padding:0 6px;color:#29352e;font-size:13px;font-weight:700}
+.deposit-options{display:grid;gap:8px}
+.deposit-option{display:flex;align-items:flex-start;gap:10px;padding:11px 12px;border:1px solid var(--line);border-radius:10px;background:#fff;cursor:pointer}
+.deposit-option input{margin-top:3px;accent-color:#1f715e}
+.deposit-option span{display:flex;flex-direction:column;gap:2px}
+.deposit-option strong{font-size:14px}
+.deposit-option small{color:var(--muted);font-size:12px;line-height:1.4}
+.deposit-option.is-selected{border-color:#1f715e;background:#f1f8f4}
+.deposit-deductions{display:grid;gap:8px;margin-top:12px}
+.deposit-deduction{display:grid;grid-template-columns:150px 1fr 110px 34px;gap:6px;align-items:center}
+.deposit-deduction select,.deposit-deduction input{min-height:40px}
+.deposit-amount{display:flex;align-items:center;border:1px solid var(--line);border-radius:8px;background:#fff}
+.deposit-amount i{padding-left:10px;color:var(--muted);font-style:normal}
+.deposit-amount input{min-width:0;border:0!important;background:transparent;text-align:right;font-variant-numeric:tabular-nums}
+.deposit-remove{width:34px;height:34px;border:0;border-radius:50%;background:#f1f3f2;color:#674e49;font-size:18px;line-height:1;cursor:pointer}
+.deposit-add{justify-self:start}
+.deposit-totals{display:grid;gap:4px;margin:4px 0 0;padding:10px 12px;border-radius:10px;background:#f8faf9}
+.deposit-totals div{display:flex;justify-content:space-between;gap:10px;font-size:13px}
+.deposit-totals dt{color:var(--muted)}.deposit-totals dd{margin:0;font-weight:700;font-variant-numeric:tabular-nums}
+.deposit-totals .deposit-refund{padding-top:6px;border-top:1px solid var(--line);font-size:15px}
+.deposit-totals .deposit-refund dd{color:#1d6b42}
+.deposit-totals.is-over .deposit-refund dd{color:#a94740}
+.deposit-settled{padding:12px 14px;border:1px solid #cfe3d8;border-radius:12px;background:#f4faf6}
+.deposit-settled-head{display:flex;flex-wrap:wrap;justify-content:space-between;gap:8px;font-size:13px}
+.deposit-settled-head span{color:#1d6b42;font-weight:700}
+.deposit-settled ul{display:grid;gap:4px;margin:8px 0 0;padding:0;list-style:none}
+.deposit-settled li{display:flex;justify-content:space-between;gap:10px;font-size:13px}
+.deposit-settled li b{color:#a94740;font-variant-numeric:tabular-nums}
+.deposit-settled p{margin:8px 0 0;font-size:13px}
+@media(max-width:640px){.deposit-deduction{grid-template-columns:1fr 1fr 34px}.deposit-deduction select{grid-column:1/3}.deposit-deduction input:nth-of-type(1){grid-column:1/3}.deposit-deduction .deposit-amount{grid-column:1/2}.deposit-deduction .deposit-remove{grid-column:3/4;grid-row:3}}
+.pnl-hint{margin-left:6px;color:var(--muted);font-size:11px;font-weight:500}
+@media(max-width:640px){.deposit-deduction+.deposit-deduction{margin-top:4px;padding-top:10px;border-top:1px dashed var(--line)}}

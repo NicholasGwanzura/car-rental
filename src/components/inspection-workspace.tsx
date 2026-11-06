@@ -8,6 +8,7 @@ import { WorkspaceDialog } from "@/components/workspace-dialog";
 import { DrillLink } from "@/components/drilldown";
 import { ClientSignature, InspectionChecklistFields, checklistDeclaration, checklistRows, checklistStatusLabel, inspectionChecklistItems } from "@/components/inspection-inputs";
 import { InspectionPhotoField, InspectionPhotoGallery, countDamageMarks, countRealPhotos, finalizePhotos } from "@/components/inspection-photos";
+import { exportInspectionReport, pickupFor } from "@/lib/inspection-report";
 import { OdometerField, lastOdometerReading, parseOdometer, validateOdometer } from "@/components/odometer-field";
 import { useRentalData, type InspectionChecklist, type InspectionPhoto, type PrebookingInspection } from "@/lib/rental-data";
 
@@ -91,7 +92,7 @@ export function InspectionWorkspace() {
             </button>;
           })}</div>
         </section>
-        {selected && <section className="inspection-detail panel"><div className="panel-heading"><div><p className="eyebrow">INSPECTION DETAIL</p><h2>{customers.find((item) => item.id === selected.customerId)?.name ?? "Customer"}</h2></div><span className="status-pill status-confirmed">{selected.condition}</span></div>
+        {selected && <section className="inspection-detail panel"><div className="panel-heading"><div><p className="eyebrow">INSPECTION DETAIL</p><h2>{customers.find((item) => item.id === selected.customerId)?.name ?? "Customer"}</h2></div><div className="panel-heading-actions"><span className="status-pill status-confirmed">{selected.condition}</span><button type="button" className="button button-quiet" onClick={() => exportInspectionReport({ inspection: selected, company, customer: customers.find((item) => item.id === selected.customerId), vehicle: vehicles.find((item) => item.id === selected.vehicleId), booking: bookings.find((item) => item.id === selected.bookingId), pickup: pickupFor(selected, inspections) })}>Download report</button></div></div>
           <div className="inspection-linked-records"><div><span>CUSTOMER</span><strong><DrillLink kind="customer" id={customers.find((item) => item.id === selected.customerId)?.id}>{customers.find((item) => item.id === selected.customerId)?.name ?? "Customer unavailable"}</DrillLink></strong><small>{customers.find((item) => item.id === selected.customerId)?.phone ?? ""}</small></div><div><span>VEHICLE</span><strong><DrillLink kind="vehicle" id={vehicles.find((item) => item.id === selected.vehicleId)?.id}>{vehicles.find((item) => item.id === selected.vehicleId)?.registration ?? "Vehicle unavailable"}</DrillLink></strong><small>{(() => { const v = vehicles.find((item) => item.id === selected.vehicleId); return v ? `${v.make} ${v.model}` : ""; })()}</small></div></div>
           <div className="inspection-facts"><span><small>INSPECTION DATE</small><strong>{formatInspectionDate(selected.inspectionDate)}</strong></span><span><small>ODOMETER</small><strong>{selected.odometerKm.toLocaleString()} km</strong></span><span><small>FUEL</small><strong>{selected.fuelPercent}%</strong></span></div>
           {selected.odometerPhotoDataUrl && <div className="inspection-odometer-photo"><span>ODOMETER READING · {selected.odometerKm.toLocaleString()} km</span><img src={selected.odometerPhotoDataUrl} alt="Dashboard odometer photo" /></div>}

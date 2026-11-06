@@ -14,7 +14,7 @@ function Field({ label, children, wide = false }: { label: string; children: Rea
 }
 
 /** Add or edit a customer. ID and licence photos are required for new customers; editing keeps existing photos unless replaced. */
-export function CustomerDialog({ customer, onClose }: { customer: Customer | null; onClose: () => void }) {
+export function CustomerDialog({ customer, onClose, onSaved }: { customer: Customer | null; onClose: () => void; onSaved?: (customer: Customer) => void }) {
   const { addCustomer, updateCustomer } = useRentalData();
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
@@ -38,7 +38,10 @@ export function CustomerDialog({ customer, onClose }: { customer: Customer | nul
         licencePhotoDataUrl: await photo("licencePhoto", customer?.licencePhotoDataUrl, "driver’s licence"),
       };
       if (customer) updateCustomer(customer.id, details);
-      else addCustomer({ ...details, idPhotoName: (form.get("idPhoto") as File | null)?.name });
+      else {
+        const created = addCustomer({ ...details, idPhotoName: (form.get("idPhoto") as File | null)?.name });
+        onSaved?.(created);
+      }
       onClose();
     } catch (reason) { setError(reason instanceof Error ? reason.message : "Could not save this customer."); }
     finally { setBusy(false); }

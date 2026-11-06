@@ -30,7 +30,7 @@ export function parseOdometer(text: string) {
   return Number(text.trim().replace(/[\s,]/g, ""));
 }
 
-export function OdometerField({ value, onChange, photo, onPhotoChange, minimum, minimumLabel, warnAboveKm = 5000 }: {
+export function OdometerField({ value, onChange, photo, onPhotoChange, minimum, minimumLabel, warnAboveKm = 5000, jumpNote }: {
   value: string;
   onChange: (value: string) => void;
   photo?: string;
@@ -40,6 +40,8 @@ export function OdometerField({ value, onChange, photo, onPhotoChange, minimum, 
   minimumLabel?: string;
   /** Show a "check this" warning when the reading jumps by more than this. */
   warnAboveKm?: number;
+  /** Replaces the large-jump warning with a note about the distance since the last reading. */
+  jumpNote?: (jumpKm: number) => string | undefined;
 }) {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
@@ -61,7 +63,8 @@ export function OdometerField({ value, onChange, photo, onPhotoChange, minimum, 
       <input name="odometer" inputMode="numeric" pattern="[0-9 ,]*" autoComplete="off" placeholder={minimum ? `At least ${minimum.toLocaleString()}` : "e.g. 48250"} value={value} onChange={(event) => onChange(event.target.value)} required />
       <small>{minimum ? `${minimumLabel ?? "Last recorded reading"}: ${minimum.toLocaleString()} km.` : "Type the figure exactly as shown on the dashboard."}</small>
     </label>
-    {jump > warnAboveKm && <p className="odometer-warning" role="status">That’s {jump.toLocaleString()} km more than the last reading. Double-check the figure before saving.</p>}
+    {jumpNote && minimum > 0 && jump > 0 && <p className="odometer-jump-note" role="status">{jumpNote(jump)}</p>}
+    {!jumpNote && jump > warnAboveKm && <p className="odometer-warning" role="status">That’s {jump.toLocaleString()} km more than the last reading. Double-check the figure before saving.</p>}
     <div className="odometer-photo">
       <span className="odometer-photo-label">Odometer photo <small>required · the reading must be readable</small></span>
       {photo ? <div className="odometer-photo-preview"><img src={photo} alt="Odometer reading" /><label className="button button-quiet">Retake<input type="file" accept="image/*" capture="environment" onChange={(event) => void capture(event)} /></label><button type="button" className="text-action text-action-muted" onClick={() => onPhotoChange(undefined)}>Remove</button></div>

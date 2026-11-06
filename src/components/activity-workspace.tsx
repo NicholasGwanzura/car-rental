@@ -50,27 +50,48 @@ export function ActivityWorkspace() {
   const [error, setError] = useState("");
   const [type, setType] = useState("");
   const [person, setPerson] = useState("");
+  const [reloadToken, setReloadToken] = useState(0);
   const [team, setTeam] = useState<TeamUser[]>([]);
   const [expanded, setExpanded] = useState<Record<string, boolean>>({});
   const allowed = !currentUser || currentUser.role !== "sales";
 
-  const load = useCallback(async (before?: string) => {
-    setLoading(true); setError("");
+  /** Fetches one page of the log. Throws a readable message on failure. */
+  const fetchPage = useCallback(async (before?: string) => {
     const params = new URLSearchParams();
     if (before) params.set("before", before);
     if (type) params.set("entity", type);
     if (person) params.set("userId", person);
-    try {
-      const response = await fetch(`/api/audit?${params}`, { cache: "no-store" });
-      const result = await response.json().catch(() => ({})) as { entries?: Entry[]; hasMore?: boolean; error?: string };
-      if (!response.ok) throw new Error(response.status === 503 ? "The activity log is available in the online workspace." : result.error ?? "Could not load activity.");
-      setEntries((current) => before ? [...current, ...(result.entries ?? [])] : result.entries ?? []);
-      setHasMore(Boolean(result.hasMore));
-    } catch (reason) { setError(reason instanceof Error ? reason.message : "Could not load activity."); }
-    finally { setLoading(false); }
+    const response = await fetch(`/api/audit?${params}`, { cache: "no-store" });
+    const result = await response.json().catch(() => ({})) as { entries?: Entry[]; hasMore?: boolean; error?: string };
+    if (!response.ok) throw new Error(response.status === 503 ? "The activity log is available in the online workspace." : result.error ?? "Could not load activity.");
+    return { entries: result.entries ?? [], hasMore: Boolean(result.hasMore) };
   }, [type, person]);
 
-  useEffect(() => { if (allowed) void load(); }, [allowed, load]);
+  // Loads the first page whenever the filters change or Refresh is pressed.
+  // State is only set once the response arrives; the event handlers below switch `loading` on.
+  useEffect(() => {
+    if (!allowed) return;
+    let cancelled = false;
+    fetchPage()
+      .then((page) => { if (cancelled) return; setEntries(page.entries); setHasMore(page.hasMore); setError(""); })
+      .catch((reason: unknown) => { if (!cancelled) setError(reason instanceof Error ? reason.message : "Could not load activity."); })
+      .finally(() => { if (!cancelled) setLoading(false); });
+    return () => { cancelled = true; };
+  }, [allowed, fetchPage, reloadToken]);
+
+  async function loadOlder() {
+    setLoading(true);
+    try {
+      const page = await fetchPage(entries[entries.length - 1]?.at);
+      setEntries((current) => [...current, ...page.entries]);
+      setHasMore(page.hasMore);
+    } catch (reason) { setError(reason instanceof Error ? reason.message : "Could not load activity."); }
+    finally { setLoading(false); }
+  }
+
+  function changeFilter(update: () => void) { setLoading(true); setError(""); update(); }
+  function refresh() { changeFilter(() => setReloadToken((value) => value + 1)); }
+
   useEffect(() => {
     if (!allowed) return;
     fetch("/api/team", { cache: "no-store" }).then((response) => response.ok ? response.json() : null).then((result: { users?: TeamUser[] } | null) => { if (result?.users) setTeam(result.users); }).catch(() => undefined);
@@ -101,10 +122,10 @@ export function ActivityWorkspace() {
       <section className="module-page-heading"><div><p className="eyebrow">AUDIT LOG</p><h1>Activity</h1><p className="module-summary">See who did what and when: bookings, inspections, payments, customers, fleet, expenses and sign-ins.</p></div></section>
       {!allowed ? <section className="data-empty"><h2>Managers only</h2><p>Ask a manager or the workspace owner if you need to see the activity log.</p></section> : <>
         <div className="list-toolbar booking-toolbar">
-          <select className="filter-select" aria-label="Filter by type" value={type} onChange={(event) => setType(event.target.value)}>{typeFilters.map((filter) => <option key={filter.value} value={filter.value}>{filter.label}</option>)}</select>
-          <select className="filter-select" aria-label="Filter by person" value={person} onChange={(event) => setPerson(event.target.value)}><option value="">Everyone</option>{team.map((user) => <option key={user.id} value={user.id}>{user.name} · {roleLabel(user.role)}</option>)}</select>
+          <select className="filter-select" aria-label="Filter by type" value={type} onChange={(event) => changeFilter(() => setType(event.target.value))}>{typeFilters.map((filter) => <option key={filter.value} value={filter.value}>{filter.label}</option>)}</select>
+          <select className="filter-select" aria-label="Filter by person" value={person} onChange={(event) => changeFilter(() => setPerson(event.target.value))}><option value="">Everyone</option>{team.map((user) => <option key={user.id} value={user.id}>{user.name} · {roleLabel(user.role)}</option>)}</select>
           <span className="result-count">{entries.length} {entries.length === 1 ? "entry" : "entries"}{hasMore ? "+" : ""}</span>
-          <button type="button" className="button button-quiet" onClick={() => void load()} disabled={loading}>↻ Refresh</button>
+          <button type="button" className="button button-quiet" onClick={refresh} disabled={loading}>↻ Refresh</button>
         </div>
         {error ? <section className="data-empty"><h2>Activity unavailable</h2><p>{error}</p></section>
           : !loading && entries.length === 0 ? <section className="data-empty"><h2>No activity yet</h2><p>Changes made in the workspace will appear here, newest first.</p></section>
@@ -123,7 +144,7 @@ export function ActivityWorkspace() {
               <time dateTime={entry.at}>{timeLabel(entry.at)}</time>
             </li>)}</ol>
           </section>)}</div>}
-        {hasMore && !error && <div className="activity-more"><button type="button" className="button button-quiet" disabled={loading} onClick={() => void load(entries[entries.length - 1]?.at)}>{loading ? "Loading…" : "Load older activity"}</button></div>}
+        {hasMore && !error && <div className="activity-more"><button type="button" className="button button-quiet" disabled={loading} onClick={() => void loadOlder()}>{loading ? "Loading…" : "Load older activity"}</button></div>}
         {loading && entries.length === 0 && !error && <div className="loading-state"><span className="loading-spinner" />Loading activity…</div>}
       </>}
     </main>

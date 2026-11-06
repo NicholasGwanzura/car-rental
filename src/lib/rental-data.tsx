@@ -1,5 +1,6 @@
 "use client";
 
+import type { DepositDeduction } from "@/lib/deposit";
 import { BrandLogo } from "@/components/brand-mark";
 import { createContext, useContext, useEffect, useMemo, useRef, useState, type FormEvent, type ReactNode } from "react";
 
@@ -52,7 +53,11 @@ export type Booking = {
   endDate: string;
   total: number;
   depositAmount?: number;
+  /** "Returned" means the deposit has been settled: refunded in full, in part, or kept. See src/lib/deposit.ts. */
   depositStatus?: "Due" | "Held" | "Returned" | "None";
+  depositDeductions?: DepositDeduction[];
+  depositRefundedAmount?: number;
+  depositSettledAt?: string;
   mileageAllowanceKmPerDay?: number;
   excessMileageRatePerKm?: number;
   distanceKm?: number;
@@ -147,7 +152,7 @@ type RentalContextValue = StoreData & {
   addVehicle: (vehicle: Omit<Vehicle, "id" | "createdAt">) => void;
   updateVehicle: (id: string, changes: Partial<Vehicle>) => void;
   deleteVehicle: (id: string) => void;
-  addCustomer: (customer: Omit<Customer, "id" | "createdAt">) => void;
+  addCustomer: (customer: Omit<Customer, "id" | "createdAt">) => Customer;
   updateCustomer: (id: string, changes: Partial<Customer>) => void;
   deleteCustomer: (id: string) => void;
   addBooking: (booking: Omit<Booking, "id" | "reference" | "createdAt" | "status">) => Booking;
@@ -442,7 +447,11 @@ export function RentalDataProvider({ children }: { children: ReactNode }) {
     deleteBooking: (id) => { markDeleted("bookings", [id]); updateData((current) => ({ ...current, bookings: current.bookings.filter((booking) => booking.id !== id), inspections: current.inspections.map((inspection) => inspection.bookingId === id ? { ...inspection, bookingId: undefined } : inspection) })); },
     canDelete: !currentUser || currentUser.role !== "sales",
     updateCustomer: (id, changes) => updateData((current) => ({ ...current, customers: current.customers.map((customer) => customer.id === id ? { ...customer, ...changes } : customer) })),
-    addCustomer: (customer) => updateData((current) => ({ ...current, customers: [{ ...customer, id: makeId(), createdAt: new Date().toISOString() }, ...current.customers] })),
+    addCustomer: (customer) => {
+      const created: Customer = { ...customer, id: makeId(), createdAt: new Date().toISOString() };
+      updateData((current) => ({ ...current, customers: [created, ...current.customers] }));
+      return created;
+    },
     addBooking: (booking) => {
       const created: Booking = { ...booking, depositStatus: (booking.depositAmount ?? 0) > 0 ? "Due" : "None", id: makeId(), reference: `BK-${String(Date.now()).slice(-6)}`, status: "Confirmed", createdAt: new Date().toISOString() };
       updateData((current) => ({ ...current, bookings: [created, ...current.bookings] }));
@@ -480,7 +489,9 @@ export function useRentalData() {
 }
 
 export function formatMoney(amount: number) {
-  return new Intl.NumberFormat("en-US", { style: "currency", currency: "USD", minimumFractionDigits: 0, maximumFractionDigits: 2 }).format(amount);
+  // Whole amounts read "$65"; amounts with cents always show both digits ("$52.50", never "$52.5").
+  const whole = Number.isInteger(amount);
+  return new Intl.NumberFormat("en-US", { style: "currency", currency: "USD", minimumFractionDigits: whole ? 0 : 2, maximumFractionDigits: 2 }).format(amount);
 }
 
 export function nightsBetween(start: string, end: string) {

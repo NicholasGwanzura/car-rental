@@ -1,3 +1,6 @@
+import { depositSummary, settlementText } from "@/lib/deposit";
+import type { Booking } from "@/lib/rental-data";
+
 /**
  * Works out what changed between two versions of the workspace, as readable audit entries.
  * Runs on the server after every save, so entries reflect what was actually stored.
@@ -22,7 +25,7 @@ const collections: { key: string; entity: AuditEntity }[] = [
 
 /** Readable field names; fields not listed are reported by their key. */
 const fieldLabels: Record<string, string> = {
-  status: "status", paymentStatus: "payment", depositStatus: "deposit", total: "total", startDate: "pickup date", endDate: "return date",
+  status: "status", paymentStatus: "payment", depositStatus: "deposit", depositDeductions: "deposit deductions", depositRefundedAmount: "deposit refund", total: "total", startDate: "pickup date", endDate: "return date",
   dailyRate: "day rate", depositAmount: "deposit amount", registration: "registration", make: "make", model: "model", colour: "colour",
   phone: "phone", email: "email", name: "name", address: "address", licence: "licence number", idNumber: "ID number",
   checkoutOdometer: "pickup odometer", returnOdometer: "return odometer", odometerKm: "odometer", fuelPercent: "fuel", amount: "amount",
@@ -34,7 +37,7 @@ const fieldLabels: Record<string, string> = {
 
 /** Fields that are images or bulky blobs: report that they changed, not their contents. */
 const opaqueFields = new Set(["idPhotoDataUrl", "licencePhotoDataUrl", "imageDataUrl", "receiptDataUrl", "odometerPhotoDataUrl", "photos", "signatureDataUrl", "repSignatureDataUrl", "contractTerms", "checklist", "checklistNotes"]);
-const ignoredFields = new Set(["createdAt", "updatedAt"]);
+const ignoredFields = new Set(["createdAt", "updatedAt", "depositSettledAt"]);
 
 function money(value: unknown) {
   const number = Number(value);
@@ -43,7 +46,8 @@ function money(value: unknown) {
 
 function display(field: string, value: unknown) {
   if (value === undefined || value === null || value === "") return "—";
-  if (["total", "dailyRate", "depositAmount", "amount", "cost", "excessMileageCharge"].includes(field)) return money(value);
+  if (["total", "dailyRate", "depositAmount", "amount", "cost", "excessMileageCharge", "depositRefundedAmount"].includes(field)) return money(value);
+  if (field === "depositDeductions" && Array.isArray(value)) return `${value.length} ${value.length === 1 ? "item" : "items"}, ${money(value.reduce((total, item) => total + (Number((item as { amount?: unknown }).amount) || 0), 0))}`;
   if (["checkoutOdometer", "returnOdometer", "odometerKm"].includes(field)) return `${Number(value).toLocaleString("en-US")} km`;
   if (field === "fuelPercent") return `${value}%`;
   const text = typeof value === "string" ? value : JSON.stringify(value);
@@ -88,7 +92,10 @@ function updateSummary(entity: AuditEntity, name: string, before: Item, after: I
       if (after.status === "Cancelled") return `Cancelled booking ${name}`;
     }
     if (before.paymentStatus !== after.paymentStatus) return after.paymentStatus === "Paid" ? `Marked ${name} paid` : `Marked ${name} unpaid`;
-    if (before.depositStatus !== after.depositStatus && after.depositStatus === "Returned") return `Returned deposit for ${name}`;
+    if (before.depositStatus !== after.depositStatus && after.depositStatus === "Returned") {
+      const settled = depositSummary(after as unknown as Booking);
+      return `Settled deposit for ${name}${settled.state === "settled" ? ` (${settlementText(settled, money)})` : ""}`;
+    }
   }
   if (entity === "maintenance" && before.status !== after.status) return after.status === "Completed" ? `Completed service ${name}` : `Started service ${name}`;
   if (entity === "vehicle" && before.status !== after.status) return `Marked ${name} ${String(after.status).toLowerCase()}`;

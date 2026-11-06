@@ -1,5 +1,6 @@
 import type { Booking, Expense, ExpenseCategory, MaintenanceJob, Vehicle } from "@/lib/rental-data";
 
+import { depositSummary } from "@/lib/deposit";
 /**
  * Profitability rules
  * - Rental income is earned when a booking is Active or Completed. It counts in the period
@@ -75,6 +76,17 @@ export function incomeEntries(bookings: Booking[]): IncomeEntry[] {
     }));
 }
 
+/** Money kept from refundable deposits (damage, missing items, fuel, fines…), dated when the deposit was settled. */
+export type DepositKeptEntry = { bookingId: string; date: string; amount: number; vehicleId: string };
+
+export function depositKeptEntries(bookings: Booking[]): DepositKeptEntry[] {
+  return bookings.flatMap((booking) => {
+    const deposit = depositSummary(booking);
+    if (deposit.state !== "settled" || deposit.deducted <= 0) return [];
+    return [{ bookingId: booking.id, date: (deposit.settledAt ?? booking.endDate).slice(0, 10), amount: deposit.deducted, vehicleId: booking.vehicleId }];
+  });
+}
+
 export function costEntries(expenses: Expense[], maintenance: MaintenanceJob[]): CostEntry[] {
   return [
     ...expenses.map((expense): CostEntry => ({ id: expense.id, date: expense.date, amount: expense.amount, category: expense.category, vehicleId: expense.vehicleId || undefined, description: expense.description || expense.payee, source: "expense" })),
@@ -84,7 +96,7 @@ export function costEntries(expenses: Expense[], maintenance: MaintenanceJob[]):
   ];
 }
 
-export type VehicleProfit = { vehicleId: string; vehicle?: Vehicle; income: number; costs: number; net: number; margin: number | null; rentalDays: number; bookings: number };
+export type VehicleProfit = { vehicleId: string; vehicle?: Vehicle; income: number; depositKept: number; costs: number; net: number; margin: number | null; rentalDays: number; bookings: number };
 
 export type ProfitSummary = {
   income: number;
@@ -93,6 +105,8 @@ export type ProfitSummary = {
   costs: number;
   directCosts: number;
   overhead: number;
+  /** Money kept from refundable deposits in the period (counts as income). */
+  depositKept: number;
   net: number;
   margin: number | null;
   rentals: number;
@@ -103,8 +117,10 @@ export type ProfitSummary = {
 
 export function summarize({ bookings, expenses, maintenance, vehicles }: { bookings: Booking[]; expenses: Expense[]; maintenance: MaintenanceJob[]; vehicles: Vehicle[] }, range: DateRange): ProfitSummary {
   const income = incomeEntries(bookings).filter((entry) => inRange(entry.date, range));
+  const kept = depositKeptEntries(bookings).filter((entry) => inRange(entry.date, range));
   const costs = costEntries(expenses, maintenance).filter((entry) => inRange(entry.date, range));
   const sum = (values: number[]) => values.reduce((total, value) => total + value, 0);
+  const depositKept = sum(kept.map((entry) => entry.amount));
 
   const totalIncome = sum(income.map((entry) => entry.amount));
   const collected = sum(income.filter((entry) => entry.collected).map((entry) => entry.amount));
@@ -114,22 +130,24 @@ export function summarize({ bookings, expenses, maintenance, vehicles }: { booki
   const categories = new Map<ExpenseCategory, number>();
   for (const entry of costs) categories.set(entry.category, (categories.get(entry.category) ?? 0) + entry.amount);
 
-  const vehicleIds = new Set<string>([...vehicles.map((vehicle) => vehicle.id), ...income.map((entry) => entry.vehicleId), ...costs.flatMap((entry) => entry.vehicleId ? [entry.vehicleId] : [])]);
+  const vehicleIds = new Set<string>([...vehicles.map((vehicle) => vehicle.id), ...income.map((entry) => entry.vehicleId), ...kept.map((entry) => entry.vehicleId), ...costs.flatMap((entry) => entry.vehicleId ? [entry.vehicleId] : [])]);
   const byVehicle = [...vehicleIds].map((vehicleId): VehicleProfit => {
     const vehicleIncome = income.filter((entry) => entry.vehicleId === vehicleId);
     const vehicleCosts = sum(costs.filter((entry) => entry.vehicleId === vehicleId).map((entry) => entry.amount));
     const earned = sum(vehicleIncome.map((entry) => entry.amount));
+    const vehicleKept = sum(kept.filter((entry) => entry.vehicleId === vehicleId).map((entry) => entry.amount));
     return {
       vehicleId,
       vehicle: vehicles.find((vehicle) => vehicle.id === vehicleId),
       income: earned,
+      depositKept: vehicleKept,
       costs: vehicleCosts,
-      net: earned - vehicleCosts,
-      margin: earned > 0 ? (earned - vehicleCosts) / earned : null,
+      net: earned + vehicleKept - vehicleCosts,
+      margin: earned + vehicleKept > 0 ? (earned + vehicleKept - vehicleCosts) / (earned + vehicleKept) : null,
       rentalDays: sum(vehicleIncome.map((entry) => entry.rentalDays)),
       bookings: vehicleIncome.length,
     };
-  }).filter((row) => row.vehicle || row.income || row.costs).sort((a, b) => b.net - a.net);
+  }).filter((row) => row.vehicle || row.income || row.depositKept || row.costs).sort((a, b) => b.net - a.net);
 
   return {
     income: totalIncome,
@@ -138,8 +156,9 @@ export function summarize({ bookings, expenses, maintenance, vehicles }: { booki
     costs: totalCosts,
     directCosts,
     overhead: totalCosts - directCosts,
-    net: totalIncome - totalCosts,
-    margin: totalIncome > 0 ? (totalIncome - totalCosts) / totalIncome : null,
+    depositKept,
+    net: totalIncome + depositKept - totalCosts,
+    margin: totalIncome + depositKept > 0 ? (totalIncome + depositKept - totalCosts) / (totalIncome + depositKept) : null,
     rentals: income.length,
     rentalDays: sum(income.map((entry) => entry.rentalDays)),
     byCategory: [...categories].map(([category, amount]) => ({ category, amount })).sort((a, b) => b.amount - a.amount),
@@ -151,7 +170,8 @@ export type MonthPoint = { month: string; label: string; income: number; costs: 
 
 /** Month-by-month totals for the months a range covers (at most the latest 12). */
 export function monthlyTrend(data: { bookings: Booking[]; expenses: Expense[]; maintenance: MaintenanceJob[] }, range: DateRange, today = new Date()): MonthPoint[] {
-  const income = incomeEntries(data.bookings).filter((entry) => inRange(entry.date, range));
+  // Income is rentals plus money kept from deposits, so each month's net matches the profit figures.
+  const income = [...incomeEntries(data.bookings), ...depositKeptEntries(data.bookings)].filter((entry) => inRange(entry.date, range));
   const costs = costEntries(data.expenses, data.maintenance).filter((entry) => inRange(entry.date, range));
   const dates = [...income.map((entry) => entry.date), ...costs.map((entry) => entry.date)].sort();
   const todayMonth = isoDate(today).slice(0, 7);

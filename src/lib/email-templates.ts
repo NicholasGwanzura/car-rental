@@ -26,13 +26,15 @@ export function invoiceEmail(input: {
   excessRate?: number;
   deposit: number;
   depositStatus?: string;
+  /** What happened to a settled deposit, e.g. "$70 returned, $30 kept for damage". */
+  depositOutcome?: string;
   paid: boolean;
 }): EmailContent {
   const details = brandedCompany(input.company);
   const total = input.rentalTotal + input.excess;
   const dates = `${longDate(input.startDate)} – ${longDate(input.endDate)}`;
   const instructions = !input.paid && input.company?.paymentInstructions?.trim() ? input.company.paymentInstructions.trim() : "";
-  const depositNote = input.depositStatus === "Returned" ? " (returned)" : input.depositStatus === "Held" ? " (held until the vehicle is returned and inspected)" : "";
+  const depositNote = input.depositStatus === "Returned" ? ` (${input.depositOutcome || "settled"})` : input.depositStatus === "Held" ? " (held until the vehicle is returned and inspected)" : "";
   const html = emailLayout({
     company: input.company,
     preheader: `${input.paid ? "Paid" : "Amount due"}: ${money(total)} for ${input.vehicleName}`,

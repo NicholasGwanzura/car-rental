@@ -39,6 +39,16 @@ describe("diffWorkspace", () => {
     ]);
   });
 
+  it("describes a deposit settlement with its refund and deductions", () => {
+    const held = { ...base, bookings: [{ ...base.bookings[0], status: "Completed", depositAmount: 150, depositStatus: "Held" }] };
+    const settled = { ...base, bookings: [{ ...held.bookings[0], depositStatus: "Returned", depositDeductions: [{ id: "a", reason: "Damage", amount: 40 }], depositRefundedAmount: 110, depositSettledAt: "2026-11-10T09:00:00Z" }] };
+    const [entry] = diffWorkspace(held, settled);
+    expect(entry.summary).toBe("Settled deposit for BK-1 ($110 returned, $40 kept)");
+    expect(entry.changes.map((change) => change.field)).toEqual(expect.arrayContaining(["deposit", "deposit deductions", "deposit refund"]));
+    expect(entry.changes.find((change) => change.field === "deposit deductions")).toEqual({ field: "deposit deductions", from: "—", to: "1 item, $40" });
+    expect(entry.changes.some((change) => change.field === "depositSettledAt")).toBe(false);
+  });
+
   it("returns nothing when nothing changed", () => {
     expect(diffWorkspace(base, structuredClone(base))).toEqual([]);
   });

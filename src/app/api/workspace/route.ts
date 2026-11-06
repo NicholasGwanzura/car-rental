@@ -3,10 +3,13 @@ import { getWorkspaceSession } from "@/lib/workspace-auth";
 import { loadWorkspaceData, recordAuditEntries, updateWorkspaceData } from "@/lib/workspace-db";
 import { diffWorkspace } from "@/lib/audit-diff";
 import { hasDeletions, mergeWorkspace, parseDeleted } from "@/lib/workspace-merge";
+import { expenseReceiptError } from "@/lib/expense-rules";
+import { depositIntegrityError } from "@/lib/deposit";
 
 export const runtime = "nodejs";
 
 class ForbiddenChange extends Error {}
+class InvalidChange extends Error {}
 
 /** Business expenses are only visible to managers and super admins. */
 function visibleTo(role: string, data: Record<string, unknown>) {
@@ -41,6 +44,13 @@ export async function PUT(request: Request) {
       const stored = current as Record<string, unknown>;
       previous = stored;
       if (user.role === "sales" && hasDeletions(deleted, ["vehicles", "customers", "bookings"])) throw new ForbiddenChange("Only managers can delete vehicles, customers, or bookings.");
+      // Sales staff never change expenses (their copy is dropped below); for everyone else every new or edited expense needs a receipt.
+      if (user.role !== "sales") {
+        const receiptError = expenseReceiptError(stored.expenses, incoming.expenses);
+        if (receiptError) throw new InvalidChange(receiptError);
+      }
+      const depositError = depositIntegrityError(incoming.bookings);
+      if (depositError) throw new InvalidChange(depositError);
       // Merge by record so a stale tab or another device can't wipe records it hasn't loaded.
       const next = mergeWorkspace(stored, incoming, deleted);
       if (user.role !== "super_admin") next.company = stored.company;
@@ -53,6 +63,7 @@ export async function PUT(request: Request) {
     return NextResponse.json({ ok: true, data: visibleTo(user.role, saved as Record<string, unknown>) });
   } catch (error) {
     if (error instanceof ForbiddenChange) return NextResponse.json({ error: error.message }, { status: 403 });
+    if (error instanceof InvalidChange) return NextResponse.json({ error: error.message }, { status: 422 });
     console.error("Workspace database write failed", error);
     return NextResponse.json({ error: "Could not save workspace data." }, { status: 400 });
   }

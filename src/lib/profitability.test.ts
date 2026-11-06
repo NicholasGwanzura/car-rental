@@ -44,6 +44,27 @@ describe("profitability", () => {
     expect(summary.byCategory[0]).toEqual({ category: "Fuel", amount: 40 });
   });
 
+  it("counts money kept from settled deposits as income, in the month it was settled", () => {
+    const withDeposit = {
+      ...data,
+      bookings: [...data.bookings, booking("b6", "a", "2026-10-02", "2026-10-04", 80, "Completed", { depositAmount: 150, depositStatus: "Returned", depositDeductions: [{ id: "d1", reason: "Damage", amount: 40 }], depositRefundedAmount: 110, depositSettledAt: "2026-11-05T09:00:00Z" })],
+    };
+    const october = summarize(withDeposit, { from: "2026-10-01", to: "2026-10-31" });
+    expect(october.depositKept).toBe(0); // settled in November
+    expect(october.income).toBe(350); // 270 + the $80 rental
+    const november = summarize(withDeposit, { from: "2026-11-01", to: "2026-11-30" });
+    expect(november.depositKept).toBe(40);
+    expect(november.net).toBe(40); // nothing else in November
+    expect(november.margin).toBe(1);
+    const vehicleA = november.byVehicle.find((row) => row.vehicleId === "a");
+    expect(vehicleA).toMatchObject({ depositKept: 40, net: 40 });
+    const trend = monthlyTrend(withDeposit, { from: "2026-10-01", to: "2026-11-30" });
+    expect(trend.find((point) => point.month === "2026-11")).toMatchObject({ income: 40, net: 40 });
+    // a deposit refunded in full adds nothing
+    const refunded = summarize({ ...data, bookings: [...data.bookings, booking("b7", "a", "2026-10-03", "2026-10-04", 0, "Completed", { depositAmount: 100, depositStatus: "Returned" })] }, { from: "2026-10-01", to: "2026-11-30" });
+    expect(refunded.depositKept).toBe(0);
+  });
+
   it("calculates profit per vehicle", () => {
     const rows = summarize(data, october).byVehicle;
     expect(rows.find((row) => row.vehicleId === "a")).toMatchObject({ income: 170, costs: 40, net: 130, rentalDays: 3, bookings: 1 });

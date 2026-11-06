@@ -5,6 +5,7 @@ import Link from "next/link";
 import { AppShell, PageTopbar } from "@/components/app-shell";
 import { formatMoney, useRentalData } from "@/lib/rental-data";
 import { BRAND, brandedCompany } from "@/lib/brand";
+import { exportRentalReceipt } from "@/lib/rental-contract";
 
 function BrandLogo() {
   return <svg className="invoice-logo" viewBox="0 0 64 64" aria-hidden="true"><rect width="64" height="64" rx="14" fill={BRAND.ink} /><path d="M29 21a13 13 0 1 0 0 22" fill="none" stroke={BRAND.accent} strokeWidth="7" strokeLinecap="round" /><path d="M38 21v22m0-22h7a7 7 0 0 1 0 14h-7m8 0 8 8" fill="none" stroke={BRAND.accent} strokeWidth="6" strokeLinecap="round" strokeLinejoin="round" /></svg>;
@@ -15,7 +16,7 @@ function printableDate(value: string) {
 }
 
 export function BillingWorkspace() {
-  const { bookings, customers, vehicles, company, updateBooking, ready } = useRentalData();
+  const { bookings, customers, vehicles, inspections, company, updateBooking, ready } = useRentalData();
   const [selectedId, setSelectedId] = useState("");
   const [emailState, setEmailState] = useState("");
   const [sendingEmail, setSendingEmail] = useState(false);
@@ -65,7 +66,7 @@ export function BillingWorkspace() {
           })}</div>
         </section>
         {selected && <section className="invoice-preview-panel">
-          <div className="invoice-toolbar"><div><strong>Invoice preview</strong><small>Print a PDF or email the invoice.</small>{emailState && <small className="invoice-email-state" role="status">{emailState}</small>}</div><div className="invoice-toolbar-actions"><button type="button" className="button button-quiet" onClick={() => void emailInvoice()} disabled={sendingEmail || !customer?.email}>{sendingEmail ? "Sending…" : "Email invoice"}</button><button type="button" className="button button-primary" onClick={() => window.print()}><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M7 8V4h10v4M7 17H5a2 2 0 0 1-2-2v-4a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2v4a2 2 0 0 1-2 2h-2M7 14h10v6H7z"/><path d="M17 11h.01"/></svg>Save invoice as PDF</button></div></div>
+          <div className="invoice-toolbar"><div><strong>Invoice preview</strong><small>Print a PDF or email the invoice.</small>{emailState && <small className="invoice-email-state" role="status">{emailState}</small>}</div><div className="invoice-toolbar-actions"><button type="button" className="button button-quiet" onClick={() => void emailInvoice()} disabled={sendingEmail || !customer?.email}>{sendingEmail ? "Sending…" : "Email invoice"}</button><button type="button" className="button button-quiet" onClick={() => selected && exportRentalReceipt({ booking: selected, company, customer, vehicle, pickup: inspections.filter((item) => item.bookingId === selected.id && item.stage === "Pickup").sort((a, b) => b.createdAt.localeCompare(a.createdAt))[0] })} disabled={!selected || selected.status === "Cancelled"} title="Receipt showing the days, charges and refundable deposit">Download receipt</button><button type="button" className="button button-primary" onClick={() => window.print()}><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M7 8V4h10v4M7 17H5a2 2 0 0 1-2-2v-4a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2v4a2 2 0 0 1-2 2h-2M7 14h10v6H7z"/><path d="M17 11h.01"/></svg>Save invoice as PDF</button></div></div>
           <article className="invoice-document">
             <header className="invoice-heading"><div className="invoice-brand"><BrandLogo /><div><h2>{details.name.toUpperCase()}</h2><small className="invoice-brand-sub">CAR RENTAL</small><p>{details.address}</p><p>{details.phone}</p><p>{details.emails.join(" · ")} · {details.website}</p></div></div><div className="invoice-number"><span>INVOICE</span><strong>{company.invoicePrefix || "INV"}-{selected.reference.replace(/^BK-/, "")}</strong><small>Issued {printableDate(selected.createdAt)}</small></div></header>
             <div className="invoice-rule invoice-brand-bar" />
