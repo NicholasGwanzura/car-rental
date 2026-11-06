@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { AppShell, NavIcon, PageTopbar } from "@/components/app-shell";
 import { formatMoney, useRentalData } from "@/lib/rental-data";
-import { useDrilldown } from "@/components/drilldown";
+import { BookingRows, CustomerRows, DrillLink, VehicleRows, useDrilldown } from "@/components/drilldown";
 
 const today = new Intl.DateTimeFormat("en", { weekday: "long", month: "long", day: "numeric", timeZone: "Africa/Harare" }).format(new Date());
 const quickLinks = [
@@ -18,6 +18,17 @@ export function OverviewWorkspace() {
   const openBookings = bookings.filter((booking) => ["Confirmed", "Active"].includes(booking.status));
   const upcoming = [...openBookings].sort((a, b) => a.startDate.localeCompare(b.startDate)).slice(0, 4);
   const openJobs = maintenance.filter((job) => job.status !== "Completed");
+  const plural = (count: number, one: string, many: string) => count === 1 ? one : many;
+  const statCards = [
+    { label: "FLEET", icon: "fleet", iconClass: "fleet-icon", count: vehicles.length, unit: plural(vehicles.length, "vehicle", "vehicles"), href: "/fleet", linkLabel: "Manage fleet",
+      open: () => open({ kind: "custom", title: "Fleet", eyebrow: `${vehicles.filter((vehicle) => vehicle.status === "Available").length} OF ${vehicles.length} AVAILABLE`, content: <VehicleRows vehicles={vehicles} /> }) },
+    { label: "UPCOMING & ACTIVE", icon: "bookings", iconClass: "booking-icon", count: openBookings.length, unit: plural(openBookings.length, "booking", "bookings"), href: "/bookings", linkLabel: "View bookings",
+      open: () => open({ kind: "custom", title: "Upcoming & active bookings", eyebrow: `${openBookings.filter((booking) => booking.status === "Active").length} ON RENT · ${openBookings.filter((booking) => booking.status === "Confirmed").length} UPCOMING`, content: <BookingRows bookings={[...openBookings].sort((a, b) => a.startDate.localeCompare(b.startDate))} /> }) },
+    { label: "CUSTOMERS", icon: "customers", iconClass: "customer-icon", count: customers.length, unit: plural(customers.length, "customer", "customers"), href: "/customers", linkLabel: "View customers",
+      open: () => open({ kind: "custom", title: "Customers", eyebrow: `${customers.length} ${plural(customers.length, "CUSTOMER", "CUSTOMERS")}`, content: <CustomerRows customers={[...customers].sort((a, b) => a.name.localeCompare(b.name))} /> }) },
+    { label: "SERVICE TO DO", icon: "maintenance", iconClass: "progress-icon", count: openJobs.length, unit: plural(openJobs.length, "job", "jobs"), href: "/maintenance", linkLabel: "Open maintenance",
+      open: () => open({ kind: "custom", title: "Service to do", eyebrow: `${openJobs.length} OPEN ${plural(openJobs.length, "JOB", "JOBS")}`, content: openJobs.length ? <ul className="drill-list">{[...openJobs].sort((a, b) => a.dueDate.localeCompare(b.dueDate)).map((job) => { const vehicle = vehicles.find((item) => item.id === job.vehicleId); return <li key={job.id}><span><strong>{job.title}</strong><small>Due {new Intl.DateTimeFormat("en", { day: "numeric", month: "short", year: "numeric", timeZone: "Africa/Harare" }).format(new Date(`${job.dueDate}T12:00:00`))} · {job.status} · <DrillLink kind="vehicle" id={vehicle?.id}>{vehicle ? `${vehicle.make} ${vehicle.model} · ${vehicle.registration}` : "Vehicle removed"}</DrillLink></small></span><span>{formatMoney(job.cost)}</span></li>; })}</ul> : <p className="drill-empty">No open service jobs.</p> }) },
+  ];
   const setupSteps = [
     { label: "Add your first vehicle", href: "/fleet", complete: vehicles.length > 0 },
     { label: "Save a customer", href: "/customers", complete: customers.length > 0 },
@@ -41,10 +52,14 @@ export function OverviewWorkspace() {
         </section>}
 
         <section className="stats-grid overview-stats" aria-label="Workspace totals">
-          <article className="stat-card"><div className="stat-top"><span className="stat-label">FLEET</span><span className="stat-icon fleet-icon"><NavIcon name="fleet" /></span></div><div className="stat-number">{vehicles.length} <span>{vehicles.length === 1 ? "vehicle" : "vehicles"}</span></div><Link className="stat-link" href="/fleet">Manage fleet →</Link></article>
-          <article className="stat-card"><div className="stat-top"><span className="stat-label">UPCOMING & ACTIVE</span><span className="stat-icon booking-icon"><NavIcon name="bookings" /></span></div><div className="stat-number">{openBookings.length} <span>{openBookings.length === 1 ? "booking" : "bookings"}</span></div><Link className="stat-link" href="/bookings">View bookings →</Link></article>
-          <article className="stat-card"><div className="stat-top"><span className="stat-label">CUSTOMERS</span><span className="stat-icon customer-icon"><NavIcon name="customers" /></span></div><div className="stat-number">{customers.length} <span>{customers.length === 1 ? "customer" : "customers"}</span></div><Link className="stat-link" href="/customers">View customers →</Link></article>
-          <article className="stat-card"><div className="stat-top"><span className="stat-label">SERVICE TO DO</span><span className="stat-icon progress-icon"><NavIcon name="maintenance" /></span></div><div className="stat-number">{openJobs.length} <span>{openJobs.length === 1 ? "job" : "jobs"}</span></div><Link className="stat-link" href="/maintenance">Open maintenance →</Link></article>
+          {statCards.map((card) => <article className="stat-card is-drillable" key={card.label}>
+            <button type="button" className="stat-drill" onClick={card.open} aria-label={`${card.label}: ${card.count} ${card.unit}. Show list`}>
+              <span className="stat-top"><span className="stat-label">{card.label}</span><span className={`stat-icon ${card.iconClass}`}><NavIcon name={card.icon} /></span></span>
+              <span className="stat-number">{card.count} <span>{card.unit}</span></span>
+              <span className="stat-drill-hint" aria-hidden="true">Tap to view ›</span>
+            </button>
+            <Link className="stat-link" href={card.href}>{card.linkLabel} →</Link>
+          </article>)}
         </section>
 
         <section className="content-grid overview-content-grid">
@@ -56,7 +71,7 @@ export function OverviewWorkspace() {
           </article>
           <article className="panel quick-panel"><div className="panel-heading"><div><p className="eyebrow">SHORTCUTS</p><h2>Quick actions</h2></div></div><div className="quick-list">{quickLinks.map((item) => <Link className="quick-action" key={item.title} href={item.href}><span className="quick-icon" aria-hidden="true"><NavIcon name={item.icon} /></span><span className="quick-copy"><strong>{item.title}</strong><small>{item.detail}</small></span><span className="quick-arrow" aria-hidden="true">↗</span></Link>)}</div><Link className="reports-shortcut" href="/reports"><span><strong>View reports</strong><small>Track rental performance</small></span><span aria-hidden="true">→</span></Link></article>
         </section>
-        <footer className="page-footer"><span>CLASSIC RIDES</span><span>Built for the way you move.</span><a href="mailto:sales@classicrides.online">Contact ↗</a></footer>
+        <footer className="page-footer"><span>CLASSIC RIDES</span><span>Built for the way you move.</span><a href="mailto:sales@classicrides.online,classicride23@gmail.com">Contact ↗</a></footer>
       </>}
     </main>
   </AppShell>;

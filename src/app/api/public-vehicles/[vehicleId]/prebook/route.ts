@@ -40,7 +40,7 @@ export async function POST(request: Request, { params }: { params: Promise<{ veh
         estimate: (Number(vehicle.dailyRate) || 0) * days,
         workspaceUrl: new URL("/bookings", process.env.NEXT_PUBLIC_APP_URL || "https://classicrides.online").toString(),
       });
-      await sendEmail({ to: brandedCompany(company).email, ...content, replyTo: email, category: "prebooking_alert", idempotencyKey: `prebooking-${prebooking.id}` });
+      await sendEmail({ to: brandedCompany(company).emails, ...content, replyTo: email, category: "prebooking_alert", idempotencyKey: `prebooking-${prebooking.id}` });
     }
     return NextResponse.json({ ok: true, reference }, { status: 201 });
   } catch (error) {

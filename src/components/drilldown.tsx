@@ -5,9 +5,12 @@ import Link from "next/link";
 import { createContext, useCallback, useContext, useMemo, useState, type ReactNode } from "react";
 import { WorkspaceDialog } from "@/components/workspace-dialog";
 import { InspectionPhotoGallery, countDamageMarks, countRealPhotos } from "@/components/inspection-photos";
-import { inspectionChecklistItems } from "@/components/inspection-inputs";
+import { checklistRows } from "@/components/inspection-inputs";
 import { exportRentalContract } from "@/lib/rental-contract";
-import { formatMoney, nightsBetween, useRentalData, type Booking } from "@/lib/rental-data";
+import { exportVehicleChecklist } from "@/lib/vehicle-checklist";
+import { CustomerDialog } from "@/components/customer-dialog";
+import { whatsappDigits } from "@/lib/brand";
+import { formatMoney, nightsBetween, useRentalData, type Booking, type Customer, type Vehicle } from "@/lib/rental-data";
 
 /**
  * Drill-downs: any vehicle, customer, booking or inspection can be opened in a detail
@@ -67,6 +70,36 @@ export function BookingRows({ bookings }: { bookings: Booking[] }) {
   })}</ul>;
 }
 
+export function VehicleRows({ vehicles }: { vehicles: Vehicle[] }) {
+  const { bookings } = useRentalData();
+  const { open } = useDrilldown();
+  if (!vehicles.length) return <Empty>No vehicles yet.</Empty>;
+  return <ul className="drill-rows">{vehicles.map((vehicle) => {
+    const current = bookings.find((booking) => booking.vehicleId === vehicle.id && booking.status === "Active");
+    const next = bookings.filter((booking) => booking.vehicleId === vehicle.id && booking.status === "Confirmed").sort((a, b) => a.startDate.localeCompare(b.startDate))[0];
+    return <li key={vehicle.id}><button type="button" onClick={() => open({ kind: "vehicle", id: vehicle.id })}>
+      <span className="drill-row-main"><strong>{vehicle.make} {vehicle.model}</strong><small>{vehicle.registration} · {vehicle.vehicleType} · {formatMoney(vehicle.dailyRate)}/day</small><small>{current ? `On rent until ${longDate(current.endDate)}` : next ? `Next booking ${longDate(next.startDate)}` : "No upcoming bookings"}</small></span>
+      <span className="drill-row-side"><span className={statusClass(current ? "Active" : vehicle.status)}>{current ? "On rent" : vehicle.status}</span></span>
+      <span className="drill-row-arrow" aria-hidden="true">›</span>
+    </button></li>;
+  })}</ul>;
+}
+
+export function CustomerRows({ customers }: { customers: Customer[] }) {
+  const { bookings } = useRentalData();
+  const { open } = useDrilldown();
+  if (!customers.length) return <Empty>No customers yet.</Empty>;
+  return <ul className="drill-rows">{customers.map((customer) => {
+    const own = bookings.filter((booking) => booking.customerId === customer.id);
+    const missing = !customer.licencePhotoDataUrl || !customer.idPhotoDataUrl || !customer.address;
+    return <li key={customer.id}><button type="button" onClick={() => open({ kind: "customer", id: customer.id })}>
+      <span className="drill-row-main"><strong>{customer.name}</strong><small>{customer.phone}{customer.email ? ` · ${customer.email}` : ""}</small><small>{own.length} {own.length === 1 ? "booking" : "bookings"}</small></span>
+      <span className="drill-row-side">{missing ? <span className="status-pill status-active">Details missing</span> : <span className="status-pill status-available">Complete</span>}</span>
+      <span className="drill-row-arrow" aria-hidden="true">›</span>
+    </button></li>;
+  })}</ul>;
+}
+
 function InspectionRows({ ids }: { ids: string[] }) {
   const { inspections } = useRentalData();
   const { open } = useDrilldown();
@@ -121,13 +154,18 @@ function VehicleDetail({ id }: { id: string }) {
 
 function CustomerDetail({ id }: { id: string }) {
   const { customers, bookings, inspections } = useRentalData();
+  const [editing, setEditing] = useState(false);
   const customer = customers.find((item) => item.id === id);
   if (!customer) return <Empty>This customer has been removed.</Empty>;
   const own = bookings.filter((booking) => booking.customerId === id).sort((a, b) => b.startDate.localeCompare(a.startDate));
   const billable = own.filter((booking) => booking.status !== "Cancelled");
   const billed = billable.reduce((total, booking) => total + booking.total + (booking.excessMileageCharge ?? 0), 0);
   const unpaid = billable.filter((booking) => booking.paymentStatus !== "Paid").reduce((total, booking) => total + booking.total + (booking.excessMileageCharge ?? 0), 0);
+  const missing = [!customer.licencePhotoDataUrl && "driver’s licence photo", !customer.idPhotoDataUrl && "ID photo", !customer.address && "residential address"].filter(Boolean);
   return <>
+    {missing.length > 0 && <div className="drill-warning" role="status"><span>Missing: {missing.join(", ")}.</span><button type="button" className="text-action" onClick={() => setEditing(true)}>Add now</button></div>}
+    <div className="drill-actions"><button type="button" className="button button-quiet" onClick={() => setEditing(true)}>Edit details</button><a className="button button-quiet" href={`tel:${customer.phone.replace(/\s+/g, "")}`}>Call</a>{whatsappDigits(customer.phone) && <a className="button button-quiet" href={`https://wa.me/${whatsappDigits(customer.phone)}`} target="_blank" rel="noreferrer">WhatsApp</a>}</div>
+    {editing && <CustomerDialog customer={customer} onClose={() => setEditing(false)} />}
     <Facts items={[["Phone", <a key="p" href={`tel:${customer.phone.replace(/\s+/g, "")}`}>{customer.phone}</a>], ["Email", customer.email ? <a key="e" href={`mailto:${customer.email}`}>{customer.email}</a> : undefined], ["Driver licence", customer.licence], ["ID number", customer.idNumber], ["Address", customer.address], ["Next of kin", [customer.nextOfKinName, customer.nextOfKinPhone].filter(Boolean).join(" · ")], ["Customer since", longDate(customer.createdAt)]]} />
     <div className="drill-docs"><DocumentThumb src={customer.idPhotoDataUrl} label="ID document" /><DocumentThumb src={customer.licencePhotoDataUrl} label="Driver’s licence" /></div>
     <Stats items={[["Bookings", String(own.length)], ["Total billed", formatMoney(billed)], ["Unpaid", formatMoney(unpaid)]]} />
@@ -144,6 +182,7 @@ function BookingDetail({ id }: { id: string }) {
   const vehicle = vehicles.find((item) => item.id === booking.vehicleId);
   const own = inspections.filter((item) => item.bookingId === id).sort((a, b) => a.createdAt.localeCompare(b.createdAt));
   const pickup = [...own].reverse().find((item) => item.stage === "Pickup");
+  const returned = [...own].reverse().find((item) => item.stage === "Return");
   const days = nightsBetween(booking.startDate, booking.endDate);
   return <>
     <div className="drill-hero-tags"><span className={statusClass(booking.status)}>{booking.status}</span><span className={`status-pill ${booking.paymentStatus === "Paid" ? "status-available" : "status-active"}`}>{booking.paymentStatus === "Paid" ? "Paid" : "Payment due"}</span></div>
@@ -153,7 +192,7 @@ function BookingDetail({ id }: { id: string }) {
     </div>
     <Stats items={[["Rental", formatMoney(booking.total)], ["Excess mileage", formatMoney(booking.excessMileageCharge ?? 0)], ["Total", formatMoney(booking.total + (booking.excessMileageCharge ?? 0))], ["Deposit", `${formatMoney(booking.depositAmount ?? 0)}${booking.depositStatus && booking.depositStatus !== "None" ? ` · ${booking.depositStatus}` : ""}`]]} />
     <Facts items={[["Dates", `${longDate(booking.startDate)} – ${longDate(booking.endDate)} · ${days} ${days === 1 ? "day" : "days"}`], ["Pickup", booking.checkoutOdometer !== undefined ? `${booking.checkoutOdometer.toLocaleString()} km · ${booking.checkoutFuel ?? 0}% fuel` : undefined], ["Pickup note", booking.checkoutNote], ["Return", booking.returnOdometer !== undefined ? `${booking.returnOdometer.toLocaleString()} km · ${booking.returnFuel ?? 0}% fuel` : undefined], ["Return note", booking.returnNote], ["Distance", booking.distanceKm !== undefined ? `${booking.distanceKm.toLocaleString()} km (${(booking.includedMileageKm ?? 0).toLocaleString()} km included)` : undefined], ["Note", booking.note]]} />
-    <div className="drill-actions">{pickup && <button type="button" className="button button-primary" onClick={() => exportRentalContract({ booking, customer, vehicle, company, pickup })}>Export contract</button>}<Link className="button button-quiet" href="/billing">Open billing</Link></div>
+    <div className="drill-actions">{pickup && <button type="button" className="button button-primary" onClick={() => exportRentalContract({ booking, customer, vehicle, company, pickup })}>Export contract</button>}{pickup && <button type="button" className="button button-quiet" onClick={() => exportVehicleChecklist({ booking, customer, vehicle, company, out: pickup, in: returned })}>Export checklist{returned ? " (out & in)" : ""}</button>}<Link className="button button-quiet" href="/billing">Open billing</Link></div>
     <Section title="Inspections" count={own.length}>{own.length ? own.map((item) => <div className="drill-inspection" key={item.id}><div className="drill-inspection-head"><strong>{item.stage ?? "Inspection"} · {longDate(item.inspectionDate)}</strong><DrillLink kind="inspection" id={item.id}>Full details ›</DrillLink></div><InspectionPhotoGallery photos={item.photos} compact /></div>) : <Empty>No pickup or return inspection yet.</Empty>}</Section>
   </>;
 }
@@ -165,7 +204,7 @@ function InspectionDetail({ id }: { id: string }) {
   const customer = customers.find((record) => record.id === item.customerId);
   const vehicle = vehicles.find((record) => record.id === item.vehicleId);
   const booking = bookings.find((record) => record.id === item.bookingId);
-  const issues = inspectionChecklistItems.filter((entry) => item.checklist?.[entry.key] === "attention");
+  const issues = checklistRows(item.checklist).filter((entry) => item.checklist?.[entry.key] === "attention");
   return <>
     <div className="drill-parties">
       <div><span>CUSTOMER</span><DrillLink kind="customer" id={customer?.id}><strong>{customer?.name ?? "Customer removed"}</strong></DrillLink></div>

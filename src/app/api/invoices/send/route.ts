@@ -38,7 +38,7 @@ export async function POST(request: Request) {
     const result = await sendEmail({
       to: customerEmail,
       ...content,
-      replyTo: details.email,
+      replyTo: details.emails,
       category: "invoice",
       // Collapses accidental double sends within the same minute.
       idempotencyKey: `invoice-${booking.id}-${paid ? "paid" : "due"}-${Math.floor(Date.now() / 60_000)}`,

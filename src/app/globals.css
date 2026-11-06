@@ -1145,3 +1145,66 @@ body.cr-menu-open .wa-float{display:none}
 .public-whatsapp-again{display:flex;align-items:center;gap:8px;grid-column:1/-1;padding:10px 12px;border:1px solid #bfe9cf;border-radius:10px;background:#f1fbf5;color:#127a43;font-size:13px;font-weight:700}
 .cr-footer{padding-bottom:0}
 @media(max-width:760px){.cr-footer-bottom{padding-bottom:calc(84px + env(safe-area-inset-bottom))}}
+button.upcoming-row{width:100%;margin:0;padding-left:6px;padding-right:6px;border:0;border-top:1px solid #f0f2f0;border-radius:0;background:transparent;font:inherit;color:inherit;text-align:left;cursor:pointer}
+button.upcoming-row:hover{background:#f8fbf9}
+.inspection-checklist-group+.inspection-checklist-group{margin-top:18px;padding-top:16px;border-top:1px solid #edf0ed}
+.inspection-checklist-group h4{margin:0 0 10px;color:#29352e;font-size:12px;font-weight:800;letter-spacing:.8px;text-transform:uppercase}
+.inspection-saved-checklist strong.is-issue{color:#a94740}
+
+/* Tap-to-choose checklist */
+.inspection-checklist-group-head{display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:10px}
+.inspection-checklist-group-head h4{margin:0}
+.inspection-checklist-group-head h4 span{margin-left:6px;color:var(--muted);font-weight:700;letter-spacing:0}
+.checklist-all-ok{min-height:34px;padding:0 12px;border:1px solid #cfe3d8;border-radius:999px;background:#f1f8f4;color:#1f715e;font-size:12px;font-weight:700;cursor:pointer}
+.checklist-all-ok:disabled{opacity:.45;cursor:default}
+.inspection-checklist .inspection-checklist-items{grid-template-columns:repeat(2,minmax(0,1fr))}
+.inspection-check-item{display:flex;flex-direction:column;gap:6px;padding:9px 10px;border:1px solid #edf0ed;border-radius:10px;background:#fff}
+.inspection-check-item.is-pending{border-style:dashed;border-color:#d5ddd8}
+.inspection-check-item>span{color:#33413a;font-size:13px;font-weight:600}
+.check-choices{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:4px}
+.check-choice{min-height:38px;padding:0 6px;border:1px solid #e1e7e3;border-radius:8px;background:#fafbfa;color:#4f5d55;font-size:12px;font-weight:700;cursor:pointer;transition:background .12s ease,border-color .12s ease,color .12s ease}
+.check-choice:hover{border-color:#c5d3ca}
+.check-choice-ok.is-selected{border-color:#1f715e;background:#e7f3ec;color:#145747}
+.check-choice-attention.is-selected{border-color:#a94740;background:#fbeceb;color:#8f3832}
+.check-choice-na.is-selected{border-color:#9aa5a0;background:#f1f3f2;color:#3d4842}
+@media(max-width:640px){.inspection-checklist .inspection-checklist-items{grid-template-columns:1fr}.check-choice{min-height:42px;font-size:13px}.inspection-checklist-group-head{flex-wrap:wrap}}
+.drill-warning{display:flex;align-items:center;justify-content:space-between;gap:10px;padding:10px 12px;border:1px solid #f1d9b8;border-radius:10px;background:#fff8ee;color:#8a5a12;font-size:13px;font-weight:600}
+.doc-status{display:flex;flex-direction:column;gap:2px}
+.doc-status .is-ok{color:#2f6b52}
+.doc-status .is-missing{color:#a5611a;font-weight:700}
+
+/* UX audit fixes */
+.invoice-toolbar>.invoice-toolbar-actions{flex-direction:row;flex-wrap:wrap;align-items:center;justify-content:flex-end;gap:8px}
+.invoice-toolbar .button{display:inline-flex;align-items:center;justify-content:center;gap:7px}
+.text-action.text-action-primary{padding:6px 12px;border:1px solid #1b6554;border-radius:7px;background:#1f715e;color:#fff}
+.text-action.text-action-primary:hover{background:#18594a;text-decoration:none}
+@media(max-width:720px){.row-actions .text-action.text-action-primary{border-color:#1b6554;background:#1f715e;color:#fff}}
+.public-vehicle-photo .photo-backdrop{position:absolute;inset:-30px;background-size:cover;background-position:center;filter:blur(26px) saturate(1.15);opacity:.5;transform:scale(1.05)}
+.public-vehicle-photo img{z-index:1}
+@media(max-width:720px){.data-table td.is-empty-cell{display:none}}
+.filter-select{min-height:40px}
+@media(max-width:720px){.list-toolbar .filter-select{flex:1 1 160px;width:auto}}
+
+/* Classic Ride checklist form */
+.checklist-progress{margin-left:auto;padding:3px 9px;border-radius:999px;background:#eef3ef;color:#33413a;font-size:12px;font-weight:800}
+.inspection-checklist .inspection-checklist-group-head{flex-wrap:wrap}
+.inspection-checklist .inspection-checklist-group-head p{flex:1 1 260px;margin:0}
+.check-item-label{display:flex;flex-direction:column;gap:2px;color:#33413a;font-size:13px;font-weight:600}
+.check-previous{color:#5e6a63;font-size:11px;font-weight:700}
+.check-previous.is-issue{color:#a94740}
+.check-note{min-height:36px;margin-top:2px;padding:0 10px;border:1px solid #e1e7e3;border-radius:8px;font:inherit;font-size:13px}
+.check-note-toggle{align-self:flex-start;padding:2px 0;border:0;background:none;color:#1f715e;font-size:12px;font-weight:700;cursor:pointer}
+.checklist-declaration{margin:4px 0 0;padding:12px 14px;border-left:3px solid #f36b21;border-radius:6px;background:#fff8f3;color:#3b2a1d;font-size:13px;line-height:1.55}
+.checklist-note{display:block;color:var(--muted);font-size:11px;font-weight:500}
+.upcoming-details strong{font-size:13px}
+.upcoming-details small{font-size:12px}
+.upcoming-end strong,.upcoming-end small{font-variant-numeric:tabular-nums}
+button.upcoming-row .upcoming-details{text-align:left}
+/* Overview stat cards open drill-down lists */
+.stat-card.is-drillable{display:flex;flex-direction:column;transition:border-color .15s ease,transform .15s ease}
+.stat-card.is-drillable:hover{border-color:#b9cdc2;transform:translateY(-1px)}
+.stat-drill{display:flex;flex:1;flex-direction:column;gap:0;width:100%;padding:0;border:0;background:none;color:inherit;font:inherit;text-align:left;cursor:pointer}
+.stat-drill .stat-top{display:flex}
+.stat-drill .stat-number{display:block}
+.stat-drill-hint{margin:2px 0 6px;color:#1f715e;font-size:11px;font-weight:700;opacity:.75}
+.stat-card.is-drillable:hover .stat-drill-hint{opacity:1}

@@ -1,4 +1,4 @@
-import { brandedCompany } from "@/lib/brand";
+import { brandedCompany, whatsappDigits } from "@/lib/brand";
 import { emailButton, emailLayout, escapeHtml } from "@/lib/email";
 
 /** Branded transactional emails. Each returns the subject, HTML and plain-text versions. */
@@ -88,7 +88,7 @@ ${emailButton(input.invitationUrl, "Accept invitation")}
 
 export function prebookingAlertEmail(input: { company: CompanyLike; reference: string; vehicleName: string; registration?: string; customerName: string; email: string; phone: string; driverLicence: string; startDate: string; endDate: string; estimate?: number; message?: string; workspaceUrl: string }): EmailContent {
   const dates = `${longDate(input.startDate)} – ${longDate(input.endDate)}`;
-  const waNumber = input.phone.replace(/[^\d]/g, "");
+  const waNumber = whatsappDigits(input.phone);
   const html = emailLayout({
     company: input.company,
     preheader: `${input.customerName} wants the ${input.vehicleName}, ${dates}.`,

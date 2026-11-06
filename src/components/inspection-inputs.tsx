@@ -1,49 +1,110 @@
 "use client";
 
-import { useEffect, useRef, type PointerEvent } from "react";
+import { useEffect, useRef, useState, type PointerEvent } from "react";
 import type { InspectionChecklist, InspectionCheckStatus } from "@/lib/rental-data";
 
+/**
+ * The Classic Ride vehicle checklist, in the same order as the paper form.
+ * `detail` items ask for written details (size, brand, number) as well as a status.
+ */
 export const inspectionChecklistItems = [
-  { key: "tyres", label: "Tyres and spare wheel" },
-  { key: "dents", label: "Dents on bodywork" },
-  { key: "scratches", label: "Scratches on bodywork" },
-  { key: "mirrors", label: "Wing and rear-view mirrors" },
-  { key: "glass", label: "Windscreen and windows" },
-  { key: "lights", label: "Lights and indicators" },
-  { key: "wipers", label: "Wipers and washers" },
-  { key: "brakes", label: "Brakes" },
-  { key: "seatBelts", label: "Seat belts" },
-  { key: "fireExtinguisher", label: "Fire extinguisher" },
-  { key: "safetyKit", label: "Warning triangle, jack and wheel spanner" },
-] as const;
+  { key: "interior", label: "Interior condition" },
+  { key: "exterior", label: "Exterior condition" },
+  { key: "tyreCondition", label: "Tyre condition; Pressure" },
+  { key: "tyreBrand", label: "Tyre Size & Brand-name", detail: "Size and brand, e.g. 205/55 R16 Bridgestone" },
+  { key: "wheelCaps", label: "Wheel caps" },
+  { key: "wheelCovers", label: "Wheel Covers" },
+  { key: "fluids", label: "Fluid levels" },
+  { key: "battery", label: "Battery Number & Brand Name", detail: "Battery number and brand" },
+  { key: "wipers", label: "Wipes" },
+  { key: "horn", label: "Horn" },
+  { key: "mirrors", label: "Rear view Mirrors" },
+  { key: "spareWheel", label: "Spare wheel & Winder (Size & Brand Name)", detail: "Spare wheel size and brand" },
+  { key: "locknut", label: "Locknut & Fuel Cap" },
+  { key: "lights", label: "Lights: Headlights/brakes/indicators/tail/hazard/reverse" },
+  { key: "jack", label: "Jack & wheel spanner" },
+  { key: "windows", label: "Windows operation and windshields" },
+  { key: "radio", label: "Radio: Cassette / CD (Brand Name)", detail: "Radio type and brand" },
+  { key: "screens", label: "Front & Rear Screen" },
+  { key: "aircon", label: "Aircon" },
+  { key: "mats", label: "Mats" },
+  { key: "fireExtinguisher", label: "Fire Extinguisher" },
+  { key: "licences", label: "Licences: ZINARA/ZBC/Insurance" },
+  { key: "reflectors", label: "Reflectors" },
+  { key: "vestReflector", label: "Vest Reflector" },
+  { key: "triangle", label: "Triangle" },
+] as const satisfies readonly { key: string; label: string; detail?: string }[];
+
+/** Items from earlier versions of the checklist, so older inspections still read correctly. */
+const legacyLabels: Record<string, string> = {
+  tyres: "Tyres and spare wheel", dents: "Dents on bodywork", scratches: "Scratches on bodywork", glass: "Windscreen and windows",
+  brakes: "Brakes", seatBelts: "Seat belts", safetyKit: "Warning triangle, jack and wheel spanner", floorMats: "Rubber floor mats",
+  modulator: "FM / Bluetooth modulator", charger: "Phone charger and USB cables", spareKey: "Spare key or remote", hubcaps: "Wheel caps and locking wheel nut",
+  firstAid: "First aid kit", documents: "Vehicle documents (licence disc, insurance)",
+};
+
+export const checklistDeclaration = "I have checked the vehicle named above and agreed to its condition. I understand any differences may be charged on return.";
+
+export const checkStatusLabels: Record<InspectionCheckStatus, string> = { ok: "OK", attention: "Issue", na: "N/A" };
+
+/** Short label for a saved checklist status. */
+export function checklistStatusLabel(_key: string, status: InspectionCheckStatus | undefined) {
+  return status ? checkStatusLabels[status] : "—";
+}
+
+/** Rows to show for a saved checklist: the current items, plus any older items it recorded. */
+export function checklistRows(checklist?: InspectionChecklist) {
+  const current: { key: string; label: string }[] = inspectionChecklistItems.map((item) => ({ key: item.key, label: item.label }));
+  const legacy = Object.keys(checklist ?? {}).filter((key) => !current.some((item) => item.key === key)).map((key) => ({ key, label: legacyLabels[key] ?? key }));
+  return [...current, ...legacy];
+}
 
 export function InspectionChecklistFields({
   value,
   onChange,
+  notes = {},
+  onNotesChange,
+  previous,
+  previousLabel = "Out",
 }: {
   value: InspectionChecklist;
   onChange: (next: InspectionChecklist) => void;
+  notes?: Record<string, string>;
+  onNotesChange?: (next: Record<string, string>) => void;
+  /** The pickup checklist, shown next to each item when recording the return. */
+  previous?: { checklist?: InspectionChecklist; notes?: Record<string, string> };
+  previousLabel?: string;
 }) {
+  const [openNotes, setOpenNotes] = useState<Record<string, boolean>>({});
   function setStatus(key: string, status: InspectionCheckStatus | "") {
     const next = { ...value };
     if (status) next[key] = status;
     else delete next[key];
     onChange(next);
   }
+  const done = inspectionChecklistItems.filter((item) => value[item.key]).length;
 
   return <fieldset className="inspection-checklist form-field-wide">
     <legend>Vehicle checklist</legend>
-    <p>Record each item at handover and again when the vehicle is returned.</p>
+    <div className="inspection-checklist-group-head">
+      <p>Tap a status for each item{previous ? `. The ${previousLabel.toLowerCase()} condition is shown for comparison` : ""}. Add details where the form asks for size or brand.</p>
+      <span className="checklist-progress">{done}/{inspectionChecklistItems.length}</span>
+      <button type="button" className="checklist-all-ok" onClick={() => onChange({ ...value, ...Object.fromEntries(inspectionChecklistItems.filter((item) => !value[item.key]).map((item) => [item.key, "ok"])) })} disabled={done === inspectionChecklistItems.length}>Mark the rest OK</button>
+    </div>
     <div className="inspection-checklist-items">
-      {inspectionChecklistItems.map((item) => <label className="inspection-check-item" key={item.key}>
-        <span>{item.label}</span>
-        <select aria-label={item.label} required value={value[item.key] ?? ""} onChange={(event) => setStatus(item.key, event.target.value as InspectionCheckStatus | "")}>
-          <option value="" disabled>Choose</option>
-          <option value="ok">OK / no damage</option>
-          <option value="attention">Issue / damage</option>
-          <option value="na">Not applicable</option>
-        </select>
-      </label>)}
+      {inspectionChecklistItems.map((item) => {
+        const detail = "detail" in item ? item.detail : undefined;
+        const showNote = Boolean(detail) || openNotes[item.key] || Boolean(notes[item.key]);
+        const before = previous?.checklist?.[item.key];
+        const beforeNote = previous?.notes?.[item.key];
+        return <div className={`inspection-check-item${value[item.key] ? "" : " is-pending"}`} key={item.key} role="radiogroup" aria-label={item.label}>
+          <span className="check-item-label">{item.label}{previous && <small className={`check-previous${before === "attention" ? " is-issue" : ""}`}>{previousLabel}: {before ? checkStatusLabels[before] : "—"}{beforeNote ? ` · ${beforeNote}` : ""}</small>}</span>
+          <div className="check-choices">{(["ok", "attention", "na"] as const).map((status) => <button type="button" key={status} role="radio" aria-checked={value[item.key] === status} className={`check-choice check-choice-${status}${value[item.key] === status ? " is-selected" : ""}`} onClick={() => setStatus(item.key, value[item.key] === status ? "" : status)}>{checkStatusLabels[status]}</button>)}</div>
+          {onNotesChange && (showNote
+            ? <input className="check-note" aria-label={`${item.label} details`} placeholder={detail ?? "Details (optional)"} value={notes[item.key] ?? ""} onChange={(event) => onNotesChange({ ...notes, [item.key]: event.target.value })} />
+            : <button type="button" className="check-note-toggle" onClick={() => setOpenNotes((current) => ({ ...current, [item.key]: true }))}>＋ Add note</button>)}
+        </div>;
+      })}
     </div>
   </fieldset>;
 }

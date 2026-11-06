@@ -1,6 +1,6 @@
 import type { Booking, CompanyProfile, Customer, PrebookingInspection, Vehicle } from "@/lib/rental-data";
 import { formatMoney, nightsBetween } from "@/lib/rental-data";
-import { inspectionChecklistItems } from "@/components/inspection-inputs";
+import { buildChecklistSection, checklistStyles } from "@/lib/vehicle-checklist";
 import { BRAND, BRAND_LOGO_SVG, brandedCompany } from "@/lib/brand";
 import { photoLabel, photoSrc } from "@/lib/vehicle-diagrams";
 
@@ -96,18 +96,41 @@ export function buildContractHtml(input: ContractInput) {
   const kmPerDay = booking.mileageAllowanceKmPerDay ?? vehicle?.mileageAllowanceKmPerDay ?? 0;
   const deposit = booking.depositAmount ?? vehicle?.depositAmount ?? 0;
   const signedDate = longDate(pickup?.signedAt ?? new Date().toISOString());
-  const marks = (pickup?.photos ?? []).flatMap((photo) => (photo.marks ?? []).map((mark, index) => `<li>${escapeHtml(photoLabel(photo, pickup?.photos ?? []))}, mark ${index + 1}: <strong>${escapeHtml(mark.type)}</strong>${mark.note ? ` — ${escapeHtml(mark.note)}` : ""}</li>`));
-  const checklist = pickup?.checklist ? inspectionChecklistItems.map((item) => {
-    const status = pickup.checklist?.[item.key];
-    return `<tr><td>${escapeHtml(item.label)}</td><td class="${status === "attention" ? "issue" : ""}">${status === "ok" ? "OK" : status === "attention" ? "Issue / damage" : "N/A"}</td></tr>`;
-  }).join("") : "";
-  const photos = (pickup?.photos ?? []).map((photo) => `<figure><div class="photo${photo.diagram ? " diagram" : ""}"><img src="${photoSrc(photo)}" alt="">${(photo.marks ?? []).map((mark, markIndex) => `<span style="left:${mark.x}%;top:${mark.y}%">${markIndex + 1}</span>`).join("")}</div><figcaption>${escapeHtml(photoLabel(photo, pickup?.photos ?? []))}</figcaption></figure>`).join("");
-  const appendix = pickup ? `<section class="appendix"><h2>Appendix: vehicle condition at pickup</h2>
-<table class="facts"><tr><th>Booking</th><td>${escapeHtml(booking.reference)}</td><th>Inspection date</th><td>${escapeHtml(longDate(pickup.inspectionDate))}</td></tr><tr><th>Odometer</th><td>${escapeHtml(pickup.odometerKm.toLocaleString())} km</td><th>Fuel</th><td>${escapeHtml(pickup.fuelPercent)}%</td></tr><tr><th>Deposit</th><td>${escapeHtml(formatMoney(deposit))}${booking.depositStatus === "Held" ? " (received)" : ""}</td><th>Rental total</th><td>${escapeHtml(formatMoney(booking.total))}</td></tr></table>
-${pickup.notes ? `<p><strong>Notes:</strong> ${escapeHtml(pickup.notes)}</p>` : ""}
-${checklist ? `<h3>Checklist</h3><table class="checklist">${checklist}</table>` : ""}
-${marks.length ? `<h3>Existing damage recorded</h3><ul>${marks.join("")}</ul>` : ""}
-${photos ? `<h3>Photos</h3><div class="photos">${photos}</div>` : ""}</section>` : "";
+  const days = nightsBetween(booking.startDate, booking.endDate);
+  const excess = booking.excessMileageCharge ?? 0;
+  const rentalCharges = booking.total + excess;
+  const rentalPaid = booking.paymentStatus === "Paid";
+  const depositReceived = deposit > 0 && (booking.depositStatus === "Held" || booking.depositStatus === "Returned");
+  const depositReturned = booking.depositStatus === "Returned";
+  const totalReceived = (rentalPaid ? rentalCharges : 0) + (depositReceived ? deposit : 0);
+  const receiptRow = (label: string, value: string, className = "") => `<tr${className ? ` class="${className}"` : ""}><th>${label}</th><td>${value}</td></tr>`;
+  const receipt = `<section class="receipt">
+<header class="brand-head"><div class="brand-mark">${BRAND_LOGO_SVG}<div><strong>${escapeHtml(companyName.toUpperCase())}</strong><small>CAR RENTAL</small></div></div><div class="brand-contact">${escapeHtml(details.address)}<br>${escapeHtml(details.phone)}<br>${escapeHtml(details.emails.join(" · "))} · ${escapeHtml(details.website)}</div></header>
+<div class="brand-bar"></div>
+<div class="doc-meta"><span>Receipt no: <strong>RC-${escapeHtml(booking.reference.replace(/^BK-/, ""))}</strong></span><span>Date: ${escapeHtml(signedDate)}</span></div>
+<h1>RENTAL RECEIPT</h1>
+<p>Received from ${fill(renter)} for the hire of the vehicle below under contract ${escapeHtml(booking.reference)}.</p>
+<table class="receipt-table">
+${receiptRow("Vehicle", escapeHtml(vehicle ? `${vehicle.year} ${vehicle.make} ${vehicle.model} · ${vehicle.registration}` : "—"))}
+${receiptRow("Rental period", `${escapeHtml(longDate(booking.startDate))} to ${escapeHtml(longDate(booking.endDate))}`)}
+${receiptRow("Number of days", `<strong>${days} ${days === 1 ? "day" : "days"}</strong>`)}
+${receiptRow("Daily rate", `${escapeHtml(formatMoney(dailyRate))} per day`)}
+${receiptRow(`Rental charge (${days} × ${escapeHtml(formatMoney(dailyRate))})`, escapeHtml(formatMoney(booking.total)))}
+${excess > 0 ? receiptRow(`Excess mileage (${escapeHtml(booking.excessMileageKm ?? 0)} km)`, escapeHtml(formatMoney(excess))) : ""}
+${receiptRow("Rental charges", `<strong>${escapeHtml(formatMoney(rentalCharges))}</strong> · ${rentalPaid ? "Paid" : "Balance due"}`, "subtotal")}
+${deposit > 0 ? receiptRow("Refundable deposit", `<strong>${escapeHtml(formatMoney(deposit))}</strong> · ${depositReturned ? "Returned to customer" : depositReceived ? "Received" : "Not yet received"}`, "deposit") : receiptRow("Refundable deposit", "None")}
+${receiptRow("Total received", `<strong>${escapeHtml(formatMoney(totalReceived))}</strong>`, "total")}
+${!rentalPaid ? receiptRow("Balance due", `<strong>${escapeHtml(formatMoney(rentalCharges))}</strong>`, "due") : ""}
+</table>
+${deposit > 0 ? `<p class="receipt-note"><strong>Deposit is refundable.</strong> The ${escapeHtml(formatMoney(deposit))} deposit is returned when the vehicle comes back on time and in the condition recorded at pickup, less any charges for damage, missing accessories, fuel, traffic fines or excess mileage.</p>` : ""}
+<div class="signatures">
+<div class="sig"><strong>Received by, for ${escapeHtml(companyName)} Car Rental</strong><div class="line">${pickup?.repSignatureDataUrl ? `<img src="${pickup.repSignatureDataUrl}" alt="Representative signature">` : ""}</div><small>Signature &nbsp;·&nbsp; ${escapeHtml(signedDate)}</small><p>Name ${fill(pickup?.repName ?? "")}</p></div>
+<div class="sig"><strong>Customer</strong><div class="line">${pickup?.signatureDataUrl ? `<img src="${pickup.signatureDataUrl}" alt="Customer signature">` : ""}</div><small>Signature &nbsp;·&nbsp; ${escapeHtml(signedDate)}</small><p>Name ${fill(pickup?.signatoryName || renter)}</p></div>
+</div>
+</section>`;
+  const realPhotos = (pickup?.photos ?? []).filter((photo) => !photo.diagram);
+  const photoEvidence = realPhotos.length ? `<section class="appendix"><h2>Photo evidence at pickup</h2><div class="photos">${realPhotos.map((photo) => `<figure><div class="photo"><img src="${photoSrc(photo)}" alt="">${(photo.marks ?? []).map((mark, markIndex) => `<span style="left:${mark.x}%;top:${mark.y}%">${markIndex + 1}</span>`).join("")}</div><figcaption>${escapeHtml(photoLabel(photo, pickup?.photos ?? []))}${(photo.marks ?? []).length ? ` · ${(photo.marks ?? []).map((mark, index) => `${index + 1}. ${escapeHtml(mark.type)}${mark.note ? ` (${escapeHtml(mark.note)})` : ""}`).join(", ")}` : ""}</figcaption></figure>`).join("")}</div></section>` : "";
+  const appendix = `<section class="appendix">${buildChecklistSection({ booking, customer, vehicle, company, out: pickup })}</section>${photoEvidence}`;
 
   return `<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
 <title>Vehicle rental contract ${escapeHtml(booking.reference)}</title>
@@ -139,18 +162,26 @@ table{width:100%;border-collapse:collapse;margin:8px 0}th,td{padding:5px 7px;bor
 .sig .line{height:72px;border-bottom:1px solid #111;display:flex;align-items:flex-end}.sig img{max-height:70px;max-width:100%;object-fit:contain}
 .sig small{display:block;margin-top:3px}
 .custody{margin-top:18px;font-style:italic}
-.appendix{break-before:page}
+.appendix,.receipt{break-before:page}
+.receipt{margin-top:40px;padding-top:28px;border-top:2px dashed #ccc}
+.receipt-table th{width:46%;background:#f7f8f5;color:#111}
+.receipt-table tr.subtotal td,.receipt-table tr.deposit td{background:#fff8f3}
+.receipt-table tr.total th,.receipt-table tr.total td{background:#0b0b0b;color:#fff;font-size:14px}
+.receipt-table tr.due td{color:#a00}
+.receipt-note{margin-top:12px;padding:10px 12px;border-left:3px solid ${BRAND.accent};background:#fff8f3}
+@media print{.receipt{margin-top:0;padding-top:0;border-top:0}}
 .photos{display:grid;grid-template-columns:repeat(3,1fr);gap:8px}figure{margin:0;break-inside:avoid}.photo{position:relative}.photo img{width:100%;display:block}
 .photo.diagram{border:1px solid #ddd;border-radius:4px}.photo span{position:absolute;transform:translate(-50%,-50%);width:18px;height:18px;border-radius:50%;background:${BRAND.accent};color:#fff;border:2px solid #fff;font:700 10px/1 Arial,sans-serif;display:grid;place-items:center;-webkit-print-color-adjust:exact;print-color-adjust:exact}
 figcaption{font-size:10px;color:#555}
 .toolbar{position:sticky;top:0;display:flex;justify-content:flex-end;margin:-24px -24px 16px;padding:10px 24px;background:#f3f6f4;border-bottom:1px solid #dfe6e1}
 .toolbar button{height:38px;padding:0 16px;border:0;border-radius:8px;background:${BRAND.accent};color:#fff;font:700 13px Arial,sans-serif;cursor:pointer}
+${checklistStyles}
 @media print{.toolbar{display:none}body{padding:0 0 12mm}.page-foot{position:fixed;left:0;right:0;bottom:0;margin:0;background:#fff}}
 @media(max-width:600px){.brand-head{flex-direction:column;align-items:flex-start}.brand-contact{text-align:left}body{padding:16px}.toolbar{margin:-16px -16px 14px;padding:10px 16px}.signatures{grid-template-columns:1fr}.photos{grid-template-columns:repeat(2,1fr)}.fill{min-width:110px}}
 </style></head><body><main>
 <div class="toolbar"><button type="button" onclick="window.print()">Save as PDF / Print</button></div>
 <header class="brand-head"><div class="brand-mark">${BRAND_LOGO_SVG}<div><strong>${escapeHtml(companyName.toUpperCase())}</strong><small>CAR RENTAL</small></div></div>
-<div class="brand-contact">${escapeHtml(details.address)}<br><a href="tel:${escapeHtml(details.phone.split(/[·,;|]/)[0].replace(/\s+/g, ""))}">${escapeHtml(details.phone)}</a><br><a href="mailto:${escapeHtml(details.email)}">${escapeHtml(details.email)}</a> · ${escapeHtml(details.website)}</div></header>
+<div class="brand-contact">${escapeHtml(details.address)}<br><a href="tel:${escapeHtml(details.phone.split(/[·,;|]/)[0].replace(/\s+/g, ""))}">${escapeHtml(details.phone)}</a><br>${details.emails.map((address) => `<a href="mailto:${escapeHtml(address)}">${escapeHtml(address)}</a>`).join(" · ")} · ${escapeHtml(details.website)}</div></header>
 <div class="brand-bar"></div>
 <div class="doc-meta"><span>Contract ref: <strong>${escapeHtml(booking.reference)}</strong></span><span>Date: ${escapeHtml(signedDate)}</span></div>
 <h1>VEHICLE RENTAL CONTRACT</h1>
@@ -168,8 +199,9 @@ ${renderTerms(terms)}
 </div>
 <p>Residential Address ${fill(customer?.address)}</p>
 <p class="custody">After the signing of this contract, the client is taking custody of the vehicle and therefore the terms of this contract shall remain binding as long as the vehicle is in the custody of the client.</p>
+${receipt}
 ${appendix}
-<footer class="page-foot"><span>${escapeHtml(companyName)} Car Rental · ${escapeHtml(details.address)}</span><span>${escapeHtml(details.phone)} · ${escapeHtml(details.email)} · ${escapeHtml(details.website)}</span></footer>
+<footer class="page-foot"><span>${escapeHtml(companyName)} Car Rental · ${escapeHtml(details.address)}</span><span>${escapeHtml(details.phone)} · ${escapeHtml(details.emails.join(" · "))} · ${escapeHtml(details.website)}</span></footer>
 </main></body></html>`;
 }
 

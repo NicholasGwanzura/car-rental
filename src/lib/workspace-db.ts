@@ -59,6 +59,30 @@ export async function saveWorkspaceData(value: unknown) {
   );
 }
 
+/**
+ * Reads the stored workspace, lets `update` produce the next version, and writes it back,
+ * all in one transaction with the row locked so concurrent saves are applied one at a time.
+ */
+export async function updateWorkspaceData(update: (current: WorkspaceData) => unknown): Promise<WorkspaceData> {
+  await loadWorkspaceData(); // makes sure the table and row exist
+  const client = await pool().connect();
+  try {
+    await client.query("BEGIN");
+    const result = await client.query<{ payload: unknown }>(`SELECT "payload" FROM "RentalWorkspaceState" WHERE "id" = $1 FOR UPDATE`, ["default"]);
+    const current = isWorkspaceData(result.rows[0]?.payload) ? result.rows[0].payload : EMPTY;
+    const next = update(current);
+    if (!isWorkspaceData(next)) throw new Error("Workspace data must include vehicle, customer, booking, and maintenance arrays");
+    await client.query(`UPDATE "RentalWorkspaceState" SET "payload" = $2::jsonb, "updatedAt" = NOW() WHERE "id" = $1`, ["default", JSON.stringify(next)]);
+    await client.query("COMMIT");
+    return next;
+  } catch (error) {
+    await client.query("ROLLBACK").catch(() => undefined);
+    throw error;
+  } finally {
+    client.release();
+  }
+}
+
 export async function checkWorkspaceDatabase() {
   await pool().query("SELECT 1");
   return true;

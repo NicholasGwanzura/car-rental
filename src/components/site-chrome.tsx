@@ -5,7 +5,7 @@ import { usePathname } from "next/navigation";
 import { useEffect, useState } from "react";
 import { BrandLogo } from "@/components/brand-mark";
 import { PwaInstallButton } from "@/components/pwa-install-button";
-import { WHATSAPP_DISPLAY, whatsappLink } from "@/lib/brand";
+import { DEFAULT_COMPANY_DETAILS, WHATSAPP_DISPLAY, whatsappLink } from "@/lib/brand";
 
 const links = [
   { href: "/", label: "Home" },
@@ -18,7 +18,7 @@ const phones = [
   { display: "+263 772 313 286", tel: "+263772313286" },
   { display: "+263 777 879 154", tel: "+263777879154" },
 ];
-const email = "sales@classicrides.online";
+const emails = [DEFAULT_COMPANY_DETAILS.email, DEFAULT_COMPANY_DETAILS.secondaryEmail];
 
 function isActive(pathname: string, href: string) {
   if (href === "/") return pathname === "/";
@@ -67,7 +67,7 @@ export function SiteHeader() {
         <span>Call or message us</span>
         <a className="cr-wa-link" href={whatsappLink("Hi Classic Rides, I’d like to rent a car.")} target="_blank" rel="noreferrer">WhatsApp {WHATSAPP_DISPLAY}</a>
         {phones.map((phone) => <a key={phone.tel} href={`tel:${phone.tel}`}>{phone.display}</a>)}
-        <a href={`mailto:${email}`}>{email}</a>
+        {emails.map((address) => <a key={address} href={`mailto:${address}`}>{address}</a>)}
       </div>
       <div className="cr-mobile-actions"><Link className="cr-cta" href="/contact" onClick={() => setOpen(false)}>Book a car <span aria-hidden="true">→</span></Link><PwaInstallButton /><Link className="cr-staff-link" href="/workspace">Staff login</Link></div>
     </div>
@@ -84,7 +84,7 @@ export function SiteFooter() {
       </div>
       <nav className="cr-footer-col" aria-label="Explore"><h2>Explore</h2>{links.map((link) => <Link key={link.href} href={link.href}>{link.label === "Fleet" ? "Our fleet" : link.label}</Link>)}</nav>
       <nav className="cr-footer-col" aria-label="Services"><h2>Services</h2><Link href="/services">Self-drive rentals</Link><Link href="/services">Chauffeur-driven</Link><Link href="/services">Airport transfers</Link><Link href="/services">Monthly &amp; long-term</Link></nav>
-      <div className="cr-footer-col"><h2>Contact</h2><a className="cr-wa-link" href={whatsappLink("Hi Classic Rides, I’d like to rent a car.")} target="_blank" rel="noreferrer">WhatsApp us</a>{phones.map((phone) => <a key={phone.tel} href={`tel:${phone.tel}`}>{phone.display}</a>)}<a href={`mailto:${email}`}>{email}</a><span>Harare, Zimbabwe</span></div>
+      <div className="cr-footer-col"><h2>Contact</h2><a className="cr-wa-link" href={whatsappLink("Hi Classic Rides, I’d like to rent a car.")} target="_blank" rel="noreferrer">WhatsApp us</a>{phones.map((phone) => <a key={phone.tel} href={`tel:${phone.tel}`}>{phone.display}</a>)}{emails.map((address) => <a key={address} href={`mailto:${address}`}>{address}</a>)}<span>06 Carine Close, Cranborne, Harare, Zimbabwe</span></div>
     </div>
     <WhatsAppFloat />
     <div className="cr-footer-bottom"><span>© {new Date().getFullYear()} Classic Rides Car Rental. All rights reserved.</span><span className="cr-footer-bottom-links"><PwaInstallButton /><Link href="/workspace">Staff login</Link></span></div>

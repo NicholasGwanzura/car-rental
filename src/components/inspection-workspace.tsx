@@ -6,7 +6,7 @@ import { useMemo, useState, type FormEvent } from "react";
 import { AppShell, PageTopbar } from "@/components/app-shell";
 import { WorkspaceDialog } from "@/components/workspace-dialog";
 import { DrillLink } from "@/components/drilldown";
-import { ClientSignature, InspectionChecklistFields, inspectionChecklistItems } from "@/components/inspection-inputs";
+import { ClientSignature, InspectionChecklistFields, checklistDeclaration, checklistRows, checklistStatusLabel, inspectionChecklistItems } from "@/components/inspection-inputs";
 import { InspectionPhotoField, InspectionPhotoGallery, countDamageMarks, countRealPhotos, finalizePhotos } from "@/components/inspection-photos";
 import { useRentalData, type InspectionChecklist, type InspectionPhoto, type PrebookingInspection } from "@/lib/rental-data";
 
@@ -34,6 +34,7 @@ export function InspectionWorkspace() {
   const [error, setError] = useState("");
   const [saved, setSaved] = useState(false);
   const [checklist, setChecklist] = useState<InspectionChecklist>({});
+  const [checklistNotes, setChecklistNotes] = useState<Record<string, string>>({});
   const [signature, setSignature] = useState("");
   const [signatoryName, setSignatoryName] = useState("");
   const [repName, setRepName] = useState(currentUser?.name ?? "");
@@ -44,7 +45,7 @@ export function InspectionWorkspace() {
   const matchingBookings = bookings.filter((booking) => booking.customerId === customerId && booking.vehicleId === vehicleId);
 
   function resetForm() {
-    setOpen(false); setCustomerId(""); setVehicleId(""); setBookingId(""); setPhotos([]); setError(""); setChecklist({}); setSignature(""); setSignatoryName(""); setRepSignature(""); setRepName(currentUser?.name ?? "");
+    setOpen(false); setCustomerId(""); setVehicleId(""); setBookingId(""); setPhotos([]); setError(""); setChecklist({}); setChecklistNotes({}); setSignature(""); setSignatoryName(""); setRepSignature(""); setRepName(currentUser?.name ?? "");
   }
 
   function save(event: FormEvent<HTMLFormElement>) {
@@ -59,7 +60,7 @@ export function InspectionWorkspace() {
       ...(bookingId ? { bookingId } : {}), stage: "Pre-booking", inspectionDate: String(form.get("inspectionDate")),
       odometerKm: Number(form.get("odometerKm")), fuelPercent: Number(form.get("fuelPercent")),
       condition: String(form.get("condition")) as PrebookingInspection["condition"],
-      notes: String(form.get("notes")).trim(), photos: finalizePhotos(photos), checklist, signatoryName: signatoryName.trim(), signatureDataUrl: signature, signedAt: new Date().toISOString(), repName: repName.trim(), repSignatureDataUrl: repSignature,
+      notes: String(form.get("notes")).trim(), photos: finalizePhotos(photos), checklist, checklistNotes: Object.fromEntries(Object.entries(checklistNotes).map(([key, note]) => [key, note.trim()]).filter(([, note]) => note)), signatoryName: signatoryName.trim(), signatureDataUrl: signature, signedAt: new Date().toISOString(), repName: repName.trim(), repSignatureDataUrl: repSignature,
     });
     setSelectedId(created.id);
     setSaved(true); window.setTimeout(() => setSaved(false), 3500); resetForm();
@@ -88,7 +89,7 @@ export function InspectionWorkspace() {
         {selected && <section className="inspection-detail panel"><div className="panel-heading"><div><p className="eyebrow">INSPECTION DETAIL</p><h2>{customers.find((item) => item.id === selected.customerId)?.name ?? "Customer"}</h2></div><span className="status-pill status-confirmed">{selected.condition}</span></div>
           <div className="inspection-linked-records"><div><span>CUSTOMER</span><strong><DrillLink kind="customer" id={customers.find((item) => item.id === selected.customerId)?.id}>{customers.find((item) => item.id === selected.customerId)?.name ?? "Customer unavailable"}</DrillLink></strong><small>{customers.find((item) => item.id === selected.customerId)?.phone ?? ""}</small></div><div><span>VEHICLE</span><strong><DrillLink kind="vehicle" id={vehicles.find((item) => item.id === selected.vehicleId)?.id}>{vehicles.find((item) => item.id === selected.vehicleId)?.registration ?? "Vehicle unavailable"}</DrillLink></strong><small>{(() => { const v = vehicles.find((item) => item.id === selected.vehicleId); return v ? `${v.make} ${v.model}` : ""; })()}</small></div></div>
           <div className="inspection-facts"><span><small>INSPECTION DATE</small><strong>{formatInspectionDate(selected.inspectionDate)}</strong></span><span><small>ODOMETER</small><strong>{selected.odometerKm.toLocaleString()} km</strong></span><span><small>FUEL</small><strong>{selected.fuelPercent}%</strong></span></div>
-          {selected.checklist && <div className="inspection-saved-checklist"><span>VEHICLE CHECKLIST</span>{inspectionChecklistItems.map((entry) => <div key={entry.key}><span>{entry.label}</span><strong>{selected.checklist?.[entry.key] === "ok" ? "OK" : selected.checklist?.[entry.key] === "attention" ? "Issue" : "N/A"}</strong></div>)}</div>}
+          {selected.checklist && <div className="inspection-saved-checklist"><span>VEHICLE CHECKLIST</span>{checklistRows(selected.checklist).map((entry) => <div key={entry.key}><span>{entry.label}{selected.checklistNotes?.[entry.key] && <small className="checklist-note">{selected.checklistNotes[entry.key]}</small>}</span><strong className={selected.checklist?.[entry.key] === "attention" ? "is-issue" : undefined}>{checklistStatusLabel(entry.key, selected.checklist?.[entry.key])}</strong></div>)}</div>}
           {(selected.signatureDataUrl || selected.repSignatureDataUrl) && <div className="inspection-signatures">{selected.signatureDataUrl && <div className="inspection-saved-signature"><span>CLIENT · {selected.signatoryName || "CLIENT"}</span><img src={selected.signatureDataUrl} alt={`Signature from ${selected.signatoryName || "client"}`} /></div>}{selected.repSignatureDataUrl && <div className="inspection-saved-signature"><span>{(company.name || "Classic Rides").toUpperCase()} · {selected.repName || "REPRESENTATIVE"}</span><img src={selected.repSignatureDataUrl} alt={`Signature from ${selected.repName || "representative"}`} /></div>}</div>}
           <div className="inspection-notes"><span>CONDITION NOTES</span><p>{selected.notes || "No additional notes."}</p></div>
           {selected.bookingId && <p className="inspection-booking-link">Linked booking: <DrillLink kind="booking" id={bookings.find((booking) => booking.id === selected.bookingId)?.id}>{bookings.find((booking) => booking.id === selected.bookingId)?.reference ?? "Booking"}</DrillLink></p>}
@@ -106,7 +107,8 @@ export function InspectionWorkspace() {
         <label className="form-field"><span>Fuel level</span><select name="fuelPercent" defaultValue="100"><option value="100">Full · 100%</option><option value="75">¾ tank · 75%</option><option value="50">½ tank · 50%</option><option value="25">¼ tank · 25%</option><option value="0">Empty · 0%</option></select></label>
         <label className="form-field"><span>Overall condition</span><select name="condition" defaultValue="Good"><option>Good</option><option>Fair</option><option>Needs attention</option></select></label>
         <label className="form-field form-field-wide"><span>Condition notes</span><textarea name="notes" rows={3} placeholder="Describe existing damage, cleanliness, or other notes." /></label>
-        <InspectionChecklistFields value={checklist} onChange={setChecklist} />
+        <InspectionChecklistFields value={checklist} onChange={setChecklist} notes={checklistNotes} onNotesChange={setChecklistNotes} />
+        <p className="checklist-declaration form-field-wide">{checklistDeclaration}</p>
         <ClientSignature name={signatoryName} onNameChange={setSignatoryName} signature={signature} onSignatureChange={setSignature} initialName={customers.find((customer) => customer.id === customerId)?.name ?? ""} />
         <ClientSignature name={repName} onNameChange={setRepName} signature={repSignature} onSignatureChange={setRepSignature} initialName={currentUser?.name ?? ""} nameLabel={`${company.name || "Classic Rides"} representative`} title="REPRESENTATIVE SIGNATURE" inputName="repName" />
         <InspectionPhotoField photos={photos} onChange={setPhotos} required />

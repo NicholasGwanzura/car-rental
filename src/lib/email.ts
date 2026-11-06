@@ -22,11 +22,11 @@ export function senderAddress() {
 }
 
 export async function sendEmail({ to, subject, html, text, replyTo, idempotencyKey, category }: {
-  to: string;
+  to: string | string[];
   subject: string;
   html: string;
   text: string;
-  replyTo?: string;
+  replyTo?: string | string[];
   /** Resend ignores a repeat send with the same key for 24 hours, so a double click can't send twice. */
   idempotencyKey?: string;
   /** Short label used for logs and Resend tags, e.g. "invoice". */
@@ -44,7 +44,7 @@ export async function sendEmail({ to, subject, html, text, replyTo, idempotencyK
       },
       body: JSON.stringify({
         from: senderAddress(),
-        to: [to],
+        to: Array.isArray(to) ? to : [to],
         subject,
         html,
         text,
@@ -100,7 +100,7 @@ export function emailLayout({ company, preheader, heading, body }: { company: Pa
 </td></tr>
 <tr><td style="padding:18px 28px 24px;border-top:1px solid #ececea;color:#6f6f69;font-size:12px;line-height:1.6;">
   ${escapeHtml(details.name)} Car Rental · ${escapeHtml(details.address)}<br>
-  ${escapeHtml(details.phone)} · <a href="mailto:${escapeHtml(details.email)}" style="color:#6f6f69;">${escapeHtml(details.email)}</a> · <a href="https://${escapeHtml(details.website)}" style="color:#6f6f69;">${escapeHtml(details.website)}</a>
+  ${escapeHtml(details.phone)} · ${details.emails.map((address) => `<a href="mailto:${escapeHtml(address)}" style="color:#6f6f69;">${escapeHtml(address)}</a>`).join(" · ")} · <a href="https://${escapeHtml(details.website)}" style="color:#6f6f69;">${escapeHtml(details.website)}</a>
 </td></tr>
 </table>
 </td></tr></table>

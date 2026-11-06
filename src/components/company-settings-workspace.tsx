@@ -13,7 +13,7 @@ export function CompanySettingsWorkspace() {
     event.preventDefault();
     const form = new FormData(event.currentTarget);
     const profile: CompanyProfile = {
-      name: String(form.get("name")).trim(), email: String(form.get("email")).trim(),
+      name: String(form.get("name")).trim(), email: String(form.get("email")).trim(), secondaryEmail: String(form.get("secondaryEmail") ?? "").trim(),
       phone: String(form.get("phone")).trim(), address: String(form.get("address")).trim(),
       invoicePrefix: String(form.get("invoicePrefix")).trim().toUpperCase() || "CR",
       paymentInstructions: String(form.get("paymentInstructions")).trim(),
@@ -32,6 +32,7 @@ export function CompanySettingsWorkspace() {
           <label className="form-field"><span>Company name</span><input name="name" defaultValue={company.name} required autoComplete="organization" placeholder="Classic Rides" /></label>
           <label className="form-field"><span>Invoice number prefix</span><input name="invoicePrefix" defaultValue={company.invoicePrefix} maxLength={10} placeholder="CR" /></label>
           <label className="form-field"><span>Business email</span><input name="email" type="email" defaultValue={company.email} required autoComplete="email" placeholder="sales@classicrides.online" /></label>
+          <label className="form-field"><span>Second business email</span><input name="secondaryEmail" type="email" defaultValue={company.secondaryEmail ?? "classicride23@gmail.com"} placeholder="classicride23@gmail.com" /></label>
           <label className="form-field"><span>Business phone</span><input name="phone" type="tel" defaultValue={company.phone} autoComplete="tel" placeholder="+263 77 000 0000" /></label>
           <label className="form-field settings-wide"><span>Business address</span><textarea name="address" rows={3} defaultValue={company.address} autoComplete="street-address" placeholder="Street, city, country" /></label>
           <label className="form-field settings-wide"><span>Payment instructions</span><textarea name="paymentInstructions" rows={3} defaultValue={company.paymentInstructions} placeholder="Bank transfer details or payment reference" /></label>

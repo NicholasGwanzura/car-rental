@@ -16,6 +16,8 @@ export type Vehicle = {
   mileageAllowanceKmPerDay: number;
   excessMileageRatePerKm: number;
   transmission: string;
+  colour?: string;
+  fuelType?: "Petrol" | "Diesel" | "Hybrid" | "Electric";
   /** Average fuel consumption in litres per 100 km. */
   fuelConsumptionLPer100Km?: number;
   status: "Available" | "Unavailable";
@@ -119,6 +121,8 @@ export type PrebookingInspection = {
   condition: "Good" | "Fair" | "Needs attention";
   notes: string;
   checklist?: InspectionChecklist;
+  /** Written details per checklist item (tyre size and brand, battery number…). */
+  checklistNotes?: Record<string, string>;
   signatoryName?: string;
   signatureDataUrl?: string;
   signedAt?: string;
@@ -129,7 +133,7 @@ export type PrebookingInspection = {
   createdAt: string;
 };
 
-export type CompanyProfile = { name: string; email: string; phone: string; address: string; invoicePrefix: string; paymentInstructions: string; contractTerms?: string };
+export type CompanyProfile = { name: string; email: string; secondaryEmail?: string; phone: string; address: string; invoicePrefix: string; paymentInstructions: string; contractTerms?: string };
 type StoreData = { vehicles: Vehicle[]; customers: Customer[]; bookings: Booking[]; maintenance: MaintenanceJob[]; inspections: PrebookingInspection[]; expenses: Expense[]; company: CompanyProfile };
 type SaveStatus = "idle" | "saving" | "saved" | "error";
 export type WorkspaceUser = { id: string; email: string; name: string; role: "super_admin" | "manager" | "sales" };
@@ -142,6 +146,7 @@ type RentalContextValue = StoreData & {
   updateVehicle: (id: string, changes: Partial<Vehicle>) => void;
   deleteVehicle: (id: string) => void;
   addCustomer: (customer: Omit<Customer, "id" | "createdAt">) => void;
+  updateCustomer: (id: string, changes: Partial<Customer>) => void;
   deleteCustomer: (id: string) => void;
   addBooking: (booking: Omit<Booking, "id" | "reference" | "createdAt" | "status">) => Booking;
   updateBooking: (id: string, changes: Partial<Booking>) => void;
@@ -160,7 +165,7 @@ type RentalContextValue = StoreData & {
 };
 
 const STORAGE_KEY = "spiritus-rental-workspace-v1";
-const defaultCompany: CompanyProfile = { name: "Classic Rides", email: "sales@classicrides.online", phone: "+263 772 313 286 · +263 777 879 154", address: "", invoicePrefix: "CR", paymentInstructions: "" };
+const defaultCompany: CompanyProfile = { name: "Classic Rides", email: "sales@classicrides.online", secondaryEmail: "classicride23@gmail.com", phone: "+263 772 313 286 · +263 777 879 154", address: "", invoicePrefix: "CR", paymentInstructions: "" };
 const emptyData: StoreData = { vehicles: [], customers: [], bookings: [], maintenance: [], inspections: [], expenses: [], company: defaultCompany };
 function removeUkContacts(phone: string) {
   return phone.split(/[·,;|\n]+/).map((item) => item.trim()).filter((item) => item && !/^(?:\+?44|0044)(?=\s|\d|$)/.test(item)).join(" · ");
@@ -247,6 +252,13 @@ export function RentalDataProvider({ children }: { children: ReactNode }) {
   const saveVersionRef = useRef(0);
   const statusVersionRef = useRef(0);
   const writeQueue = useRef<Promise<void>>(Promise.resolve());
+  // Ids deleted locally, sent with every save until the server confirms them (it merges saves by record).
+  const deletedRef = useRef<Record<string, Set<string>>>({});
+
+  function markDeleted(collection: string, ids: string[]) {
+    const set = (deletedRef.current[collection] ??= new Set());
+    ids.forEach((id) => set.add(id));
+  }
 
   function showSaveStatus(status: SaveStatus) {
     const version = ++statusVersionRef.current;
@@ -275,17 +287,28 @@ export function RentalDataProvider({ children }: { children: ReactNode }) {
       return;
     }
 
+    const deleted = Object.fromEntries(Object.entries(deletedRef.current).map(([name, ids]) => [name, [...ids]]));
     const operation = writeQueue.current.then(async () => {
       const response = await fetch("/api/workspace", {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(next),
+        body: JSON.stringify({ ...next, _deleted: deleted }),
       });
       if (!response.ok) throw new Error(`Workspace save failed (${response.status})`);
+      const result = await response.json().catch(() => null) as { data?: Partial<StoreData> } | null;
+      for (const [name, ids] of Object.entries(deleted)) ids.forEach((id) => deletedRef.current[name]?.delete(id));
+      return result?.data;
     });
-    writeQueue.current = operation.then(() => {
+    writeQueue.current = operation.then((merged) => {
       if (pendingSaveRef.current?.version !== version) return;
       pendingSaveRef.current = null;
+      // Adopt the server's merged copy (it includes records added from other devices),
+      // unless something changed locally while this save was in flight.
+      if (merged) {
+        const adopted = normalizeData(merged);
+        dataRef.current = adopted;
+        setData(adopted);
+      }
       showSaveStatus("saved");
     }, (error: unknown) => {
       console.error("Workspace data could not be saved", error);
@@ -359,6 +382,38 @@ export function RentalDataProvider({ children }: { children: ReactNode }) {
     if (pending) persistData(pending.data);
   }
 
+  // Pick up changes made on other devices when staff come back to this tab.
+  useEffect(() => {
+    if (!databaseConnected || authRequired) return;
+    async function refresh() {
+      if (document.visibilityState !== "visible" || pendingSaveRef.current) return;
+      const startVersion = saveVersionRef.current;
+      try {
+        const response = await fetch("/api/workspace", { cache: "no-store" });
+        if (!response.ok) return;
+        const result = await response.json() as { data?: Partial<StoreData> };
+        if (!result.data || pendingSaveRef.current || saveVersionRef.current !== startVersion) return;
+        const fresh = normalizeData(result.data);
+        dataRef.current = fresh;
+        setData(fresh);
+      } catch { /* offline: keep the local copy */ }
+    }
+    document.addEventListener("visibilitychange", refresh);
+    window.addEventListener("focus", refresh);
+    return () => { document.removeEventListener("visibilitychange", refresh); window.removeEventListener("focus", refresh); };
+  }, [databaseConnected, authRequired]);
+
+  // Warn before closing the tab while changes are still being saved.
+  useEffect(() => {
+    function onBeforeUnload(event: BeforeUnloadEvent) {
+      if (!pendingSaveRef.current) return;
+      event.preventDefault();
+      event.returnValue = "";
+    }
+    window.addEventListener("beforeunload", onBeforeUnload);
+    return () => window.removeEventListener("beforeunload", onBeforeUnload);
+  }, []);
+
   useEffect(() => {
     function onStorage(event: StorageEvent) {
       if (event.key !== STORAGE_KEY || !event.newValue) return;
@@ -380,10 +435,11 @@ export function RentalDataProvider({ children }: { children: ReactNode }) {
     retrySave,
     addVehicle: (vehicle) => updateData((current) => ({ ...current, vehicles: [{ ...vehicle, id: makeId(), createdAt: new Date().toISOString() }, ...current.vehicles] })),
     updateVehicle: (id, changes) => updateData((current) => ({ ...current, vehicles: current.vehicles.map((vehicle) => vehicle.id === id ? { ...vehicle, ...changes } : vehicle) })),
-    deleteVehicle: (id) => updateData((current) => ({ ...current, vehicles: current.vehicles.filter((vehicle) => vehicle.id !== id), maintenance: current.maintenance.filter((job) => job.vehicleId !== id) })),
-    deleteCustomer: (id) => updateData((current) => ({ ...current, customers: current.customers.filter((customer) => customer.id !== id) })),
-    deleteBooking: (id) => updateData((current) => ({ ...current, bookings: current.bookings.filter((booking) => booking.id !== id), inspections: current.inspections.map((inspection) => inspection.bookingId === id ? { ...inspection, bookingId: undefined } : inspection) })),
+    deleteVehicle: (id) => { markDeleted("vehicles", [id]); markDeleted("maintenance", dataRef.current.maintenance.filter((job) => job.vehicleId === id).map((job) => job.id)); updateData((current) => ({ ...current, vehicles: current.vehicles.filter((vehicle) => vehicle.id !== id), maintenance: current.maintenance.filter((job) => job.vehicleId !== id) })); },
+    deleteCustomer: (id) => { markDeleted("customers", [id]); updateData((current) => ({ ...current, customers: current.customers.filter((customer) => customer.id !== id) })); },
+    deleteBooking: (id) => { markDeleted("bookings", [id]); updateData((current) => ({ ...current, bookings: current.bookings.filter((booking) => booking.id !== id), inspections: current.inspections.map((inspection) => inspection.bookingId === id ? { ...inspection, bookingId: undefined } : inspection) })); },
     canDelete: !currentUser || currentUser.role !== "sales",
+    updateCustomer: (id, changes) => updateData((current) => ({ ...current, customers: current.customers.map((customer) => customer.id === id ? { ...customer, ...changes } : customer) })),
     addCustomer: (customer) => updateData((current) => ({ ...current, customers: [{ ...customer, id: makeId(), createdAt: new Date().toISOString() }, ...current.customers] })),
     addBooking: (booking) => {
       const created: Booking = { ...booking, depositStatus: (booking.depositAmount ?? 0) > 0 ? "Due" : "None", id: makeId(), reference: `BK-${String(Date.now()).slice(-6)}`, status: "Confirmed", createdAt: new Date().toISOString() };
@@ -400,7 +456,7 @@ export function RentalDataProvider({ children }: { children: ReactNode }) {
     },
     addExpense: (expense) => updateData((current) => ({ ...current, expenses: [{ ...expense, id: makeId(), createdAt: new Date().toISOString() }, ...current.expenses] })),
     updateExpense: (id, changes) => updateData((current) => ({ ...current, expenses: current.expenses.map((expense) => expense.id === id ? { ...expense, ...changes } : expense) })),
-    deleteExpense: (id) => updateData((current) => ({ ...current, expenses: current.expenses.filter((expense) => expense.id !== id) })),
+    deleteExpense: (id) => { markDeleted("expenses", [id]); updateData((current) => ({ ...current, expenses: current.expenses.filter((expense) => expense.id !== id) })); },
     canViewFinancials: !currentUser || currentUser.role !== "sales",
     updateCompany: (company) => updateData((current) => ({ ...current, company })),
     logout: async () => {
