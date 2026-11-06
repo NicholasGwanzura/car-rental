@@ -109,7 +109,15 @@ export function WhatsAppIcon() {
 
 /** Floating "Chat on WhatsApp" button shown on every public page. */
 export function WhatsAppFloat() {
-  return <a className="wa-float" href={whatsappLink("Hi Classic Rides, I’d like to rent a car.")} target="_blank" rel="noreferrer" aria-label={`Chat with Classic Rides on WhatsApp, ${WHATSAPP_DISPLAY}`}>
+  const [footerVisible, setFooterVisible] = useState(false);
+  useEffect(() => {
+    const footer = document.querySelector(".cr-footer");
+    if (!footer) return;
+    const observer = new IntersectionObserver(([entry]) => setFooterVisible(entry.isIntersecting));
+    observer.observe(footer);
+    return () => observer.disconnect();
+  }, []);
+  return <a className={`wa-float${footerVisible ? " is-hidden" : ""}`} href={whatsappLink("Hi Classic Rides, I’d like to rent a car.")} target="_blank" rel="noreferrer" aria-label={`Chat with Classic Rides on WhatsApp, ${WHATSAPP_DISPLAY}`}>
     <span className="wa-float-icon"><WhatsAppIcon /></span><span className="wa-float-text"><strong>Chat on WhatsApp</strong><small>{WHATSAPP_DISPLAY}</small></span>
   </a>;
 }
