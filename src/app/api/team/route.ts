@@ -1,10 +1,12 @@
 import { NextResponse } from "next/server";
 import { canInviteRole, canManageTeam, getWorkspaceSession } from "@/lib/workspace-auth";
-import { createWorkspaceInvite, listWorkspaceTeam } from "@/lib/workspace-db";
+import { createWorkspaceInvite, listWorkspaceTeam, loadWorkspaceData } from "@/lib/workspace-db";
+import { emailConfigured, sendEmail } from "@/lib/email";
+import { inviteEmail } from "@/lib/email-templates";
 
 export const runtime = "nodejs";
 
-function escapeHtml(value: string) { return value.replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c] ?? c); }
+const USER_MESSAGES = ["A workspace account or active invitation already uses this email."];
 
 export async function GET() {
   const user = await getWorkspaceSession();
@@ -23,15 +25,22 @@ export async function POST(request: Request) {
     if (!canInviteRole(inviter.role, body.role)) return NextResponse.json({ error: inviter.role === "manager" ? "Managers can invite sales staff only." : "You cannot invite that role." }, { status: 403 });
     const invite = await createWorkspaceInvite(body.email, body.role, inviter.id);
     const invitationUrl = new URL(`/invite/${invite.token}`, process.env.NEXT_PUBLIC_APP_URL || "https://classicrides.online").toString();
-    let emailSent = false;
-    if (process.env.RESEND_API_KEY) {
-      const sender = process.env.RESEND_FROM_EMAIL || "Classic Rides <sales@classicrides.online>";
-      const result = await fetch("https://api.resend.com/emails", { method: "POST", headers: { Authorization: `Bearer ${process.env.RESEND_API_KEY}`, "Content-Type": "application/json" }, body: JSON.stringify({ from: sender, to: [invite.email], subject: "Your Classic Rides workspace invitation", html: `<div style="font-family:'Honor Sans',Arial,sans-serif;color:#26372f"><p>You have been invited to join the Classic Rides workspace as a ${escapeHtml(invite.role)}.</p><p><a href="${escapeHtml(invitationUrl)}">Accept your invitation</a></p><p>This link expires in 7 days.</p></div>`, text: `You have been invited to join the Classic Rides workspace as a ${invite.role}. Accept your invitation: ${invitationUrl} (expires in 7 days).` }) });
-      emailSent = result.ok;
-    }
-    return NextResponse.json({ ok: true, emailSent, invitationUrl, message: emailSent ? "Invitation email sent." : "Invitation created. Copy the link to share it; email delivery is not configured yet." }, { status: 201 });
+    const company = await loadWorkspaceData().then((data) => (data as { company?: Record<string, string> }).company).catch(() => undefined);
+    const content = inviteEmail({ company, inviterName: inviter.name, role: invite.role, invitationUrl, expiresAt: invite.expiresAt });
+    const delivery = emailConfigured()
+      ? await sendEmail({ to: invite.email, ...content, replyTo: inviter.email, category: "invite", idempotencyKey: `invite-${invite.id}` })
+      : null;
+    const emailSent = delivery?.ok === true;
+    const message = emailSent
+      ? `Invitation email sent to ${invite.email}.`
+      : delivery
+        ? `Invitation created, but the email couldn’t be sent: ${delivery.message} Copy the link below to share it.`
+        : "Invitation created. Email delivery isn’t set up yet, so copy the link below to share it.";
+    return NextResponse.json({ ok: true, emailSent, invitationUrl, message }, { status: 201 });
   } catch (error) {
-    const message = error instanceof Error ? error.message : "Could not create this invitation.";
+    // Only pass on the messages written for people; anything else (e.g. a database error) stays in the logs.
+    const message = error instanceof Error && USER_MESSAGES.some((known) => error.message.startsWith(known)) ? error.message : "Could not create this invitation. Try again shortly.";
+    if (message !== (error instanceof Error ? error.message : "")) console.error("Team invitation failed", error);
     return NextResponse.json({ error: message }, { status: 400 });
   }
 }

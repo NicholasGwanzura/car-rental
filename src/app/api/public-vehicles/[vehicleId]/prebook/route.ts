@@ -1,5 +1,8 @@
 import { NextResponse } from "next/server";
 import { createPublicPrebookingRequest, loadWorkspaceData } from "@/lib/workspace-db";
+import { brandedCompany } from "@/lib/brand";
+import { emailConfigured, sendEmail } from "@/lib/email";
+import { prebookingAlertEmail } from "@/lib/email-templates";
 
 export const runtime = "nodejs";
 
@@ -24,7 +27,22 @@ export async function POST(request: Request, { params }: { params: Promise<{ veh
     const overlaps = (data.bookings as Record<string, unknown>[]).some((booking) => booking.vehicleId === vehicleId && ["Confirmed", "Active"].includes(String(booking.status)) && startDate < String(booking.endDate) && endDate > String(booking.startDate));
     if (overlaps) return NextResponse.json({ error: "Those dates are no longer available. Choose another date range or contact Classic Rides." }, { status: 409 });
     const prebooking = await createPublicPrebookingRequest({ vehicleId, customerName, email, phone, driverLicence, startDate, endDate, message });
-    return NextResponse.json({ ok: true, reference: prebooking.id.slice(0, 8).toUpperCase() }, { status: 201 });
+    const reference = prebooking.id.slice(0, 8).toUpperCase();
+    // Alert the Classic Rides inbox (a fixed address, never the visitor's). A failed alert doesn't fail the request.
+    if (emailConfigured()) {
+      const company = (data as { company?: Record<string, string> }).company;
+      const days = Math.max(1, Math.ceil((new Date(`${endDate}T12:00:00`).getTime() - new Date(`${startDate}T12:00:00`).getTime()) / 86_400_000));
+      const content = prebookingAlertEmail({
+        company, reference,
+        vehicleName: `${vehicle.year ?? ""} ${vehicle.make ?? ""} ${vehicle.model ?? ""}`.trim(),
+        registration: typeof vehicle.registration === "string" ? vehicle.registration : undefined,
+        customerName, email, phone, driverLicence, startDate, endDate, message,
+        estimate: (Number(vehicle.dailyRate) || 0) * days,
+        workspaceUrl: new URL("/bookings", process.env.NEXT_PUBLIC_APP_URL || "https://classicrides.online").toString(),
+      });
+      await sendEmail({ to: brandedCompany(company).email, ...content, replyTo: email, category: "prebooking_alert", idempotencyKey: `prebooking-${prebooking.id}` });
+    }
+    return NextResponse.json({ ok: true, reference }, { status: 201 });
   } catch (error) {
     console.error("Public pre-booking failed", error);
     return NextResponse.json({ error: "Could not send the pre-booking request. Please try again." }, { status: 503 });

@@ -28,7 +28,26 @@ The home page presents Classic Rides and its services. In the Fleet workspace, c
 - **Manager:** all operational areas and invitations for sales staff; no company settings.
 - **Sales:** bookings, fleet, customers, inspections, and billing.
 
-Invitations expire after seven days. Email delivery uses `RESEND_API_KEY` and `RESEND_FROM_EMAIL`. Verify the sender domain with Resend before sending production mail.
+Invitations expire after seven days.
+
+## Email (Resend)
+
+The app sends three branded emails through Resend: customer invoices, team invitations, and an alert to the company inbox for every website pre-booking. All of them go through `src/lib/email.ts`, and the templates live in `src/lib/email-templates.ts`.
+
+- `RESEND_API_KEY`: an API key with sending access.
+- `RESEND_FROM_EMAIL`: the sender, for example `Classic Rides <sales@classicrides.online>`. Its domain must be verified in Resend.
+- Replies go to the company email from Company settings (or the inviting staff member for invitations, and the customer for pre-booking alerts).
+
+For classicrides.online to verify and deliver reliably, its DNS (hosted at Spaceship) needs the records Resend shows under **Domains → classicrides.online**:
+
+| Type | Name | Value |
+|------|------|-------|
+| TXT | `resend._domainkey` | DKIM key from Resend (already published) |
+| MX | `send` | `feedback-smtp.<region>.amazonses.com`, priority 10 |
+| TXT | `send` | `v=spf1 include:amazonses.com ~all` |
+| TXT | `_dmarc` | `v=DMARC1; p=none; rua=mailto:sales@classicrides.online` (tighten to `quarantine` once reports look clean) |
+
+Copy the exact MX value from the Resend dashboard, since the region varies.
 
 ## Verify the production bundle
 
