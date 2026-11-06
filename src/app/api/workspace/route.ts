@@ -19,7 +19,11 @@ export async function GET() {
   if (!process.env.DATABASE_URL) return NextResponse.json({ error: "Database is not configured." }, { status: 503 });
   const user = await getWorkspaceSession();
   if (!user) return NextResponse.json({ error: "Sign in to your rental workspace." }, { status: 401 });
-  try { return NextResponse.json({ data: await loadWorkspaceData(), user }); }
+  try {
+    const data = await loadWorkspaceData();
+    // Business expenses are only visible to managers and super admins.
+    return NextResponse.json({ data: user.role === "sales" ? { ...data, expenses: [] } : data, user });
+  }
   catch (error) {
     console.error("Workspace database read failed", error);
     return NextResponse.json({ error: "Could not load workspace data." }, { status: 503 });
@@ -39,6 +43,8 @@ export async function PUT(request: Request) {
         return NextResponse.json({ error: "Only managers can delete vehicles, customers, or bookings." }, { status: 403 });
       }
       body = { ...(body as Record<string, unknown>), company: (current as Record<string, unknown>).company };
+      // Sales staff can't see or change business expenses; keep what is stored.
+      if (user.role === "sales") body = { ...(body as Record<string, unknown>), expenses: (current as Record<string, unknown>).expenses ?? [] };
     }
     await saveWorkspaceData(body);
     return NextResponse.json({ ok: true });

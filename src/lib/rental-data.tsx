@@ -1,5 +1,6 @@
 "use client";
 
+import { BrandLogo } from "@/components/brand-mark";
 import { createContext, useContext, useEffect, useMemo, useRef, useState, type FormEvent, type ReactNode } from "react";
 
 export type VehicleType = "Budget" | "Premium" | "SUV";
@@ -80,6 +81,26 @@ export type MaintenanceJob = {
 export const inspectionDamageTypes = ["Dent", "Scratch", "Crack", "Chip", "Missing part", "Other"] as const;
 export type InspectionDamageType = typeof inspectionDamageTypes[number];
 export type InspectionDamageMark = { id: string; x: number; y: number; type: InspectionDamageType; note?: string };
+export const expenseCategories = [
+  "Fuel", "Maintenance & repairs", "Tyres", "Insurance", "Licensing & registration", "Vehicle finance or lease", "Cleaning & valeting",
+  "Parking & tolls", "Tracking & security", "Staff & drivers", "Rent & office", "Marketing", "Phone & internet", "Bank & payment fees", "Other",
+] as const;
+export type ExpenseCategory = typeof expenseCategories[number];
+export const expensePaymentMethods = ["Cash", "EcoCash", "Bank transfer", "Card", "Other"] as const;
+export type Expense = {
+  id: string;
+  date: string;
+  amount: number;
+  category: ExpenseCategory;
+  /** The vehicle this cost belongs to; empty means general business overhead. */
+  vehicleId?: string;
+  payee: string;
+  paymentMethod: typeof expensePaymentMethods[number];
+  description: string;
+  receiptDataUrl?: string;
+  createdAt: string;
+};
+
 export type InspectionPhoto = { id: string; name: string; dataUrl: string; marks?: InspectionDamageMark[] };
 export type InspectionCheckStatus = "ok" | "attention" | "na";
 export type InspectionChecklist = Record<string, InspectionCheckStatus>;
@@ -103,7 +124,7 @@ export type PrebookingInspection = {
 };
 
 export type CompanyProfile = { name: string; email: string; phone: string; address: string; invoicePrefix: string; paymentInstructions: string; contractTerms?: string };
-type StoreData = { vehicles: Vehicle[]; customers: Customer[]; bookings: Booking[]; maintenance: MaintenanceJob[]; inspections: PrebookingInspection[]; company: CompanyProfile };
+type StoreData = { vehicles: Vehicle[]; customers: Customer[]; bookings: Booking[]; maintenance: MaintenanceJob[]; inspections: PrebookingInspection[]; expenses: Expense[]; company: CompanyProfile };
 type SaveStatus = "idle" | "saving" | "saved" | "error";
 export type WorkspaceUser = { id: string; email: string; name: string; role: "super_admin" | "manager" | "sales" };
 type RentalContextValue = StoreData & {
@@ -123,13 +144,18 @@ type RentalContextValue = StoreData & {
   addMaintenance: (job: Omit<MaintenanceJob, "id">) => void;
   updateMaintenance: (id: string, changes: Partial<MaintenanceJob>) => void;
   addInspection: (inspection: Omit<PrebookingInspection, "id" | "createdAt">) => PrebookingInspection;
+  addExpense: (expense: Omit<Expense, "id" | "createdAt">) => void;
+  updateExpense: (id: string, changes: Partial<Expense>) => void;
+  deleteExpense: (id: string) => void;
+  /** Managers and super admins can see income, expenses and profit. */
+  canViewFinancials: boolean;
   updateCompany: (company: CompanyProfile) => void;
   logout: () => Promise<void>;
 };
 
 const STORAGE_KEY = "spiritus-rental-workspace-v1";
 const defaultCompany: CompanyProfile = { name: "Classic Rides", email: "sales@classicrides.online", phone: "+263 772 313 286 · +263 777 879 154", address: "", invoicePrefix: "CR", paymentInstructions: "" };
-const emptyData: StoreData = { vehicles: [], customers: [], bookings: [], maintenance: [], inspections: [], company: defaultCompany };
+const emptyData: StoreData = { vehicles: [], customers: [], bookings: [], maintenance: [], inspections: [], expenses: [], company: defaultCompany };
 function removeUkContacts(phone: string) {
   return phone.split(/[·,;|\n]+/).map((item) => item.trim()).filter((item) => item && !/^(?:\+?44|0044)(?=\s|\d|$)/.test(item)).join(" · ");
 }
@@ -152,6 +178,7 @@ function normalizeData(input: Partial<StoreData>): StoreData {
       excessMileageRatePerKm: Number.isFinite(vehicle.excessMileageRatePerKm) ? vehicle.excessMileageRatePerKm : 0,
     })),
     inspections: data.inspections.map((inspection) => ({ ...inspection, stage: inspection.stage ?? "Pre-booking" })),
+    expenses: (Array.isArray(data.expenses) ? data.expenses : []).filter((expense) => expense && Number.isFinite(expense.amount)),
   };
 }
 const RentalContext = createContext<RentalContextValue | null>(null);
@@ -190,7 +217,7 @@ function WorkspaceLogin({ onSuccess }: { onSuccess: (data: StoreData, user: Work
     finally { setBusy(false); }
   }
   return <main className="workspace-login"><form className="workspace-login-card" onSubmit={submit}>
-    <div className="brand-mark login-brand">C</div><p className="eyebrow">CLASSIC RIDES</p><h1>{setupRequired ? "Set up your workspace" : "Welcome back"}<span>.</span></h1><p>{setupRequired ? "Create the first administrator account to protect your workspace." : "Sign in to your rental workspace."}</p>
+    <BrandLogo size={52} className="login-brand" /><p className="eyebrow">CLASSIC RIDES</p><h1>{setupRequired ? "Set up your workspace" : "Welcome back"}<span>.</span></h1><p>{setupRequired ? "Create the first administrator account to protect your workspace." : "Sign in to your rental workspace."}</p>
     {setupRequired && <label className="form-field"><span>Full name</span><input name="name" autoComplete="name" required value={name} onChange={(event) => setName(event.target.value)} /></label>}
     <label className="form-field"><span>Work email</span><input name="email" type="email" autoComplete="username" required readOnly={setupRequired} value={setupRequired ? allowedEmail : email} onChange={(event) => setEmail(event.target.value)} /></label>
     <label className="form-field"><span>{setupRequired ? "Create password" : "Password"}</span><div className="login-password-wrap"><input name="password" type={showPassword ? "text" : "password"} autoComplete={setupRequired ? "new-password" : "current-password"} minLength={setupRequired ? 12 : undefined} autoFocus required value={password} onChange={(event) => setPassword(event.target.value)} /><button className="password-visibility" type="button" aria-label={showPassword ? "Hide password" : "Show password"} aria-pressed={showPassword} onClick={() => setShowPassword((value) => !value)}>{showPassword ? "Hide" : "Show"}</button></div>{setupRequired && <small>Use at least 12 characters. This password is entered by you and stored as a salted hash.</small>}</label>
@@ -365,6 +392,10 @@ export function RentalDataProvider({ children }: { children: ReactNode }) {
       updateData((current) => ({ ...current, inspections: [created, ...current.inspections] }));
       return created;
     },
+    addExpense: (expense) => updateData((current) => ({ ...current, expenses: [{ ...expense, id: makeId(), createdAt: new Date().toISOString() }, ...current.expenses] })),
+    updateExpense: (id, changes) => updateData((current) => ({ ...current, expenses: current.expenses.map((expense) => expense.id === id ? { ...expense, ...changes } : expense) })),
+    deleteExpense: (id) => updateData((current) => ({ ...current, expenses: current.expenses.filter((expense) => expense.id !== id) })),
+    canViewFinancials: !currentUser || currentUser.role !== "sales",
     updateCompany: (company) => updateData((current) => ({ ...current, company })),
     logout: async () => {
       await writeQueue.current;

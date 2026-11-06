@@ -2,6 +2,7 @@
 
 import Image from "next/image";
 import Link from "next/link";
+import { SiteFooter, SiteHeader } from "@/components/site-chrome";
 import { useEffect, useState, type FormEvent } from "react";
 
 type PublicVehicle = { id: string; make: string; model: string; year: number; vehicleType: string; dailyRate: number; depositAmount: number; mileageAllowanceKmPerDay: number; excessMileageRatePerKm: number; transmission: string; fuelConsumptionLPer100Km?: number | null; imageDataUrl?: string | null };
@@ -41,7 +42,7 @@ export function PublicVehiclePage({ vehicleId }: { vehicleId: string }) {
   }
   const days = pickup && returned && returned > pickup ? Math.max(1, Math.ceil((new Date(`${returned}T12:00:00`).getTime() - new Date(`${pickup}T12:00:00`).getTime()) / 86400000)) : 0;
   return <main className="public-rental-page">
-    <header className="public-rental-header"><Link className="public-rental-brand" href="/"><span>C</span><strong>CLASSIC RIDES<small>CAR RENTAL</small></strong></Link><a href="mailto:sales@classicrides.online">sales@classicrides.online</a></header>
+    <SiteHeader />
     {loadError ? <section className="public-vehicle-message"><span>CLASSIC RIDES</span><h1>Vehicle unavailable</h1><p>{loadError}</p><Link className="public-link-button" href="/">Visit Classic Rides</Link></section> : !vehicle ? <div className="public-vehicle-loading">Loading vehicle details…</div> : <>
       <section className="public-vehicle-hero"><div className="public-vehicle-copy"><span className="public-overline">{vehicle.vehicleType.toUpperCase()} · {vehicle.year}</span><h1>{vehicle.make} <em>{vehicle.model}</em></h1><p>Check the vehicle details and send your preferred dates. We’ll confirm availability before the booking is final.</p><div className="public-vehicle-facts"><span>{vehicle.transmission}</span>{vehicle.fuelConsumptionLPer100Km ? <span>{vehicle.fuelConsumptionLPer100Km} L/100 km average fuel use</span> : null}<span>{vehicle.mileageAllowanceKmPerDay} km included per day</span><span>{money(vehicle.excessMileageRatePerKm)} per extra km</span></div><div className="public-vehicle-rate"><strong>{money(vehicle.dailyRate)}</strong><span>per day</span></div></div><div className={`public-vehicle-photo${vehicle.imageDataUrl ? " vehicle-has-photo" : ""}`}><Image src={vehicle.imageDataUrl || "/classic-rides-fleet.png"} alt={vehicle.imageDataUrl ? `${vehicle.make} ${vehicle.model} for hire` : "Classic Rides fleet"} fill priority sizes="(max-width: 760px) 100vw, 55vw" unoptimized={Boolean(vehicle.imageDataUrl)} /></div></section>
       <section className="public-booking-section" id="prebook"><div className="public-booking-intro"><span className="public-overline">START YOUR BOOKING</span><h2>Pre-book this vehicle</h2><p>Your request is not a confirmed booking. We’ll check your dates and contact you to finalize the rental.</p><div className="public-deposit-note"><span>Refundable vehicle deposit</span><strong>{money(vehicle.depositAmount)}</strong></div></div>
@@ -61,6 +62,6 @@ export function PublicVehiclePage({ vehicleId }: { vehicleId: string }) {
         </form>
       </section>
     </>}
-    <footer className="public-rental-footer"><span>CLASSIC RIDES · CAR RENTAL</span><a href="tel:+263772313286">+263 772 313 286</a><a href="tel:+263777879154">+263 777 879 154</a></footer>
+    <SiteFooter />
   </main>;
 }

@@ -1,7 +1,7 @@
 import { Pool } from "pg";
 import { createHash, randomBytes, randomUUID, scryptSync, timingSafeEqual } from "node:crypto";
 
-type WorkspaceData = { vehicles: unknown[]; customers: unknown[]; bookings: unknown[]; maintenance: unknown[]; inspections?: unknown[] };
+type WorkspaceData = { vehicles: unknown[]; customers: unknown[]; bookings: unknown[]; maintenance: unknown[]; inspections?: unknown[]; expenses?: unknown[] };
 const EMPTY: WorkspaceData = { vehicles: [], customers: [], bookings: [], maintenance: [], inspections: [] };
 const globalForPool = globalThis as typeof globalThis & { rentalWorkspacePool?: Pool; rentalWorkspaceSchema?: Promise<void> };
 
@@ -35,7 +35,8 @@ function isWorkspaceData(value: unknown): value is WorkspaceData {
   if (!value || typeof value !== "object") return false;
   const record = value as Record<string, unknown>;
   return ["vehicles", "customers", "bookings", "maintenance"].every((key) => Array.isArray(record[key]))
-    && (record.inspections === undefined || Array.isArray(record.inspections));
+    && (record.inspections === undefined || Array.isArray(record.inspections))
+    && (record.expenses === undefined || Array.isArray(record.expenses));
 }
 
 export async function loadWorkspaceData(): Promise<WorkspaceData> {

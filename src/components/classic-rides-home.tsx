@@ -1,6 +1,6 @@
 import Image from "next/image";
 import Link from "next/link";
-import { PwaInstallButton } from "@/components/pwa-install-button";
+import { SiteFooter, SiteHeader } from "@/components/site-chrome";
 import type { PublicVehicleSummary } from "@/lib/public-vehicles";
 
 const contactNumbers = [
@@ -48,20 +48,7 @@ export function ClassicRidesHome({ vehicles = [] }: { vehicles?: PublicVehicleSu
   </main>;
 }
 
-export function SiteHeader() { return <>
-    <header className="site-header">
-      <Link className="site-brand" href="/" aria-label="Classic Rides home"><span className="site-brand-text"><strong>CLASSIC RIDES</strong><small>CAR RENTAL</small></span></Link>
-      <nav className="site-nav" aria-label="Main navigation"><Link href="/services">Services</Link><Link href="/cars">Fleet</Link><Link href="/contact">Contact</Link><PwaInstallButton /></nav>
-      <div className="site-header-actions">
-        <Link className="site-admin-link" href="/workspace">Admin</Link>
-        <Link className="site-header-cta" href="/contact">Enquire now <span aria-hidden="true">↗</span></Link>
-      </div>
-    </header>
-</>; }
-
-export function SiteFooter() { return <>
-    <footer className="site-footer"><Link className="site-footer-brand" href="/" aria-label="Classic Rides home">CLASSIC RIDES <small>CAR RENTAL</small></Link><span>Vehicle hire and transfers.</span><a href="mailto:sales@classicrides.online">sales@classicrides.online</a><Link href="/workspace">Admin workspace <span aria-hidden="true">↗</span></Link></footer>
-</>; }
+export { SiteHeader, SiteFooter } from "@/components/site-chrome";
 
 export function SiteFleet() { return <>
     <section className="site-fleet-strip" id="fleet"><div><span className="site-section-kicker">VEHICLE TYPES</span><h2>Budget, Premium and SUV.</h2></div><div className="fleet-types"><article><span>01</span><strong>Budget</strong><small>Everyday car hire</small></article><article><span>02</span><strong>Premium</strong><small>Premium vehicle hire</small></article><article><span>03</span><strong>SUV</strong><small>More seats and luggage space</small></article></div></section>
@@ -85,8 +72,8 @@ export function SiteVehicles({ vehicles }: { vehicles: PublicVehicleSummary[] })
   </section>;
 }
 
-export function SiteServices() { return <>
-    <section className="site-services" id="services"><div className="site-section-heading"><div><span className="site-section-kicker">OUR SERVICES</span><h2>Rental services.</h2></div><p>Choose a rental service, then contact us with your dates for availability and a quote.</p></div><div className="site-service-grid">{services.map((service) => <article className="site-service-card" key={service.number}><span>{service.number}</span><h3>{service.title}</h3><p>{service.detail}</p><a href="mailto:sales@classicrides.online?subject=Classic%20Rides%20service%20enquiry" aria-label={`Ask about ${service.title}`}>Ask us <span aria-hidden="true">↗</span></a></article>)}</div><p className="site-advance-note"><span aria-hidden="true">✳</span> Ask about rates for advance and longer bookings.</p></section>
+export function SiteServices({ showHeading = true }: { showHeading?: boolean }) { return <>
+    <section className="site-services" id="services">{showHeading && <div className="site-section-heading"><div><span className="site-section-kicker">OUR SERVICES</span><h2>Rental services.</h2></div><p>Choose a rental service, then contact us with your dates for availability and a quote.</p></div>}<div className="site-service-grid">{services.map((service) => <article className="site-service-card" key={service.number}><span>{service.number}</span><h3>{service.title}</h3><p>{service.detail}</p><a href="mailto:sales@classicrides.online?subject=Classic%20Rides%20service%20enquiry" aria-label={`Ask about ${service.title}`}>Ask us <span aria-hidden="true">↗</span></a></article>)}</div><p className="site-advance-note"><span aria-hidden="true">✳</span> Ask about rates for advance and longer bookings.</p></section>
 </>; }
 
 export function SiteContact() { return <>
