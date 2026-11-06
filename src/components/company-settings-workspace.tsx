@@ -1,12 +1,14 @@
 "use client";
 
-import { useState, type FormEvent } from "react";
+import { useRef, useState, type FormEvent } from "react";
 import { AppShell, PageTopbar } from "@/components/app-shell";
 import { useRentalData, type CompanyProfile } from "@/lib/rental-data";
+import { DEFAULT_CONTRACT_TERMS } from "@/lib/rental-contract";
 
 export function CompanySettingsWorkspace() {
   const { company, updateCompany } = useRentalData();
   const [saved, setSaved] = useState(false);
+  const termsRef = useRef<HTMLTextAreaElement>(null);
   function save(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     const form = new FormData(event.currentTarget);
@@ -15,6 +17,7 @@ export function CompanySettingsWorkspace() {
       phone: String(form.get("phone")).trim(), address: String(form.get("address")).trim(),
       invoicePrefix: String(form.get("invoicePrefix")).trim().toUpperCase() || "CR",
       paymentInstructions: String(form.get("paymentInstructions")).trim(),
+      contractTerms: String(form.get("contractTerms") ?? "").trim() === DEFAULT_CONTRACT_TERMS.trim() ? undefined : String(form.get("contractTerms") ?? "").trim() || undefined,
     };
     updateCompany(profile); setSaved(true); window.setTimeout(() => setSaved(false), 3500);
   }
@@ -32,6 +35,11 @@ export function CompanySettingsWorkspace() {
           <label className="form-field"><span>Business phone</span><input name="phone" type="tel" defaultValue={company.phone} autoComplete="tel" placeholder="+263 77 000 0000" /></label>
           <label className="form-field settings-wide"><span>Business address</span><textarea name="address" rows={3} defaultValue={company.address} autoComplete="street-address" placeholder="Street, city, country" /></label>
           <label className="form-field settings-wide"><span>Payment instructions</span><textarea name="paymentInstructions" rows={3} defaultValue={company.paymentInstructions} placeholder="Bank transfer details or payment reference" /></label>
+        </div>
+        <div className="settings-section-heading"><span className="settings-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M7 3.5h7l4 4V20.5H7z"/><path d="M14 3.5v4h4M9.5 12h6m-6 3.5h6"/></svg></span><div><h2>Rental contract</h2><p>Clauses printed on the contract exported when a rental starts. Lines starting with “CLAUSE” become headings, and lines starting with “- ” become bullet points. {"{{customer}}"}, {"{{start}}"}, {"{{end}}"}, {"{{vehicle}}"}, {"{{registration}}"}, {"{{rate}}"} and {"{{deposit}}"} are filled in from the booking.</p></div></div>
+        <div className="settings-form-grid">
+          <label className="form-field settings-wide"><span>Contract clauses</span><textarea ref={termsRef} name="contractTerms" rows={16} className="contract-terms-input" defaultValue={company.contractTerms || DEFAULT_CONTRACT_TERMS} /></label>
+          <div className="settings-wide"><button type="button" className="text-action" onClick={() => { if (termsRef.current) termsRef.current.value = DEFAULT_CONTRACT_TERMS; }}>Restore the standard Classic Rides contract</button></div>
         </div>
         <div className="settings-footer"><span>These details are stored with your workspace.</span><button className="button button-primary" type="submit">Save changes</button></div>
       </form>

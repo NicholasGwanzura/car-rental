@@ -4,6 +4,17 @@ import { loadWorkspaceData, saveWorkspaceData } from "@/lib/workspace-db";
 
 export const runtime = "nodejs";
 
+function recordIds(value: unknown) {
+  return new Set(Array.isArray(value) ? value.map((item) => (item && typeof item === "object" ? (item as { id?: unknown }).id : undefined)).filter((id): id is string => typeof id === "string") : []);
+}
+
+function removesRecords(current: Record<string, unknown>, next: Record<string, unknown>) {
+  return ["vehicles", "customers", "bookings"].some((key) => {
+    const kept = recordIds(next[key]);
+    return [...recordIds(current[key])].some((id) => !kept.has(id));
+  });
+}
+
 export async function GET() {
   if (!process.env.DATABASE_URL) return NextResponse.json({ error: "Database is not configured." }, { status: 503 });
   const user = await getWorkspaceSession();
@@ -24,6 +35,9 @@ export async function PUT(request: Request) {
   try {
     if (user.role !== "super_admin" && body && typeof body === "object" && !Array.isArray(body)) {
       const current = await loadWorkspaceData();
+      if (user.role === "sales" && removesRecords(current as Record<string, unknown>, body as Record<string, unknown>)) {
+        return NextResponse.json({ error: "Only managers can delete vehicles, customers, or bookings." }, { status: 403 });
+      }
       body = { ...(body as Record<string, unknown>), company: (current as Record<string, unknown>).company };
     }
     await saveWorkspaceData(body);

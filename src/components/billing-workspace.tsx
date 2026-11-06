@@ -4,6 +4,11 @@ import { useMemo, useState } from "react";
 import Link from "next/link";
 import { AppShell, PageTopbar } from "@/components/app-shell";
 import { formatMoney, useRentalData } from "@/lib/rental-data";
+import { BRAND, brandedCompany } from "@/lib/brand";
+
+function BrandLogo() {
+  return <svg className="invoice-logo" viewBox="0 0 64 64" aria-hidden="true"><rect width="64" height="64" rx="14" fill={BRAND.ink} /><path d="M29 21a13 13 0 1 0 0 22" fill="none" stroke={BRAND.accent} strokeWidth="7" strokeLinecap="round" /><path d="M38 21v22m0-22h7a7 7 0 0 1 0 14h-7m8 0 8 8" fill="none" stroke={BRAND.accent} strokeWidth="6" strokeLinecap="round" strokeLinejoin="round" /></svg>;
+}
 
 function printableDate(value: string) {
   return new Intl.DateTimeFormat("en", { day: "numeric", month: "long", year: "numeric", timeZone: "Africa/Harare" }).format(new Date(`${value.slice(0, 10)}T12:00:00`));
@@ -18,6 +23,7 @@ export function BillingWorkspace() {
   const selected = sorted.find((booking) => booking.id === selectedId) ?? sorted[0];
   const customer = selected && customers.find((item) => item.id === selected.customerId);
   const vehicle = selected && vehicles.find((item) => item.id === selected.vehicleId);
+  const details = brandedCompany(company);
   const billableBookings = bookings.filter((booking) => booking.status !== "Cancelled");
   const invoiceTotal = (booking: (typeof bookings)[number]) => booking.total + (booking.excessMileageCharge ?? 0);
   const paidTotal = billableBookings.filter((booking) => booking.paymentStatus === "Paid").reduce((sum, booking) => sum + invoiceTotal(booking), 0);
@@ -61,13 +67,13 @@ export function BillingWorkspace() {
         {selected && <section className="invoice-preview-panel">
           <div className="invoice-toolbar"><div><strong>Invoice preview</strong><small>Print a PDF or email the invoice.</small>{emailState && <small className="invoice-email-state" role="status">{emailState}</small>}</div><div className="invoice-toolbar-actions"><button type="button" className="button button-quiet" onClick={() => void emailInvoice()} disabled={sendingEmail || !customer?.email}>{sendingEmail ? "Sending…" : "Email invoice"}</button><button type="button" className="button button-primary" onClick={() => window.print()}><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M7 8V4h10v4M7 17H5a2 2 0 0 1-2-2v-4a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2v4a2 2 0 0 1-2 2h-2M7 14h10v6H7z"/><path d="M17 11h.01"/></svg>Save invoice as PDF</button></div></div>
           <article className="invoice-document">
-            <header className="invoice-heading"><div><p className="eyebrow">INVOICE</p><h2>{company.name || "Your rental company"}</h2>{company.address && <p>{company.address}</p>}{(company.email || company.phone) && <p>{[company.email, company.phone].filter(Boolean).join(" · ")}</p>}</div><div className="invoice-number"><span>INVOICE</span><strong>{company.invoicePrefix || "INV"}-{selected.reference.replace(/^BK-/, "")}</strong><small>Issued {printableDate(selected.createdAt)}</small></div></header>
-            <div className="invoice-rule" />
+            <header className="invoice-heading"><div className="invoice-brand"><BrandLogo /><div><h2>{details.name.toUpperCase()}</h2><small className="invoice-brand-sub">CAR RENTAL</small><p>{details.address}</p><p>{details.phone}</p><p>{details.email} · {details.website}</p></div></div><div className="invoice-number"><span>INVOICE</span><strong>{company.invoicePrefix || "INV"}-{selected.reference.replace(/^BK-/, "")}</strong><small>Issued {printableDate(selected.createdAt)}</small></div></header>
+            <div className="invoice-rule invoice-brand-bar" />
             <section className="invoice-parties"><div><span>BILL TO</span><strong>{customer?.name ?? "Customer"}</strong><small>{customer?.email || ""}</small><small>{customer?.phone || ""}</small></div><div><span>RENTAL DETAILS</span><strong>{vehicle ? `${vehicle.make} ${vehicle.model}` : "Rental vehicle"}</strong><small>{vehicle?.registration || ""}</small><small>{printableDate(selected.startDate)} — {printableDate(selected.endDate)}</small></div></section>
             <table className="invoice-lines"><thead><tr><th>Description</th><th>Amount</th></tr></thead><tbody><tr><td>{selected.status === "Cancelled" ? "Cancelled rental" : "Vehicle rental"} {selected.note ? `· ${selected.note}` : ""}</td><td>{formatMoney(selected.total)}</td></tr>{(selected.excessMileageCharge ?? 0) > 0 && <tr><td>Excess mileage · {selected.distanceKm?.toLocaleString()} km travelled, {selected.includedMileageKm?.toLocaleString()} km included, {selected.excessMileageKm?.toLocaleString()} km charged at {formatMoney(selected.excessMileageRatePerKm ?? 0)}/km</td><td>{formatMoney(selected.excessMileageCharge ?? 0)}</td></tr>}</tbody></table>
             <div className="invoice-total"><span>{selected.status === "Cancelled" ? "Cancelled rental" : selected.paymentStatus === "Paid" ? "Amount paid" : "Total due"}</span><strong>{formatMoney(invoiceTotal(selected))}</strong></div>
             <div className="invoice-payment"><span className={`status-pill ${selected.status === "Cancelled" ? "status-cancelled" : selected.paymentStatus === "Paid" ? "status-available" : "status-active"}`}>{selected.status === "Cancelled" ? "Cancelled · excluded from balances" : selected.paymentStatus === "Paid" ? "Paid" : "Payment due"}</span>{selected.status !== "Cancelled" && selected.paymentStatus !== "Paid" && company.paymentInstructions && <p><strong>Payment instructions</strong><br />{company.paymentInstructions}</p>}</div>
-            <footer className="invoice-footer">Thank you for choosing {company.name || "our rental company"}.</footer>
+            <footer className="invoice-footer">Thank you for choosing {details.name}. · {details.phone} · {details.email} · {details.website}</footer>
           </article>
         </section>}
       </div>}

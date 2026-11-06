@@ -1,15 +1,12 @@
 "use client";
 
 import Link from "next/link";
-import { useMemo, useState, type ChangeEvent, type FormEvent } from "react";
+import { useMemo, useState, type FormEvent } from "react";
 import { AppShell, PageTopbar } from "@/components/app-shell";
 import { WorkspaceDialog } from "@/components/workspace-dialog";
 import { ClientSignature, InspectionChecklistFields, inspectionChecklistItems } from "@/components/inspection-inputs";
+import { DamageList, DamagePins, InspectionPhotoField, countDamageMarks } from "@/components/inspection-photos";
 import { useRentalData, type InspectionChecklist, type InspectionPhoto, type PrebookingInspection } from "@/lib/rental-data";
-
-const PHOTO_LIMIT = 6;
-const PHOTO_SIZE_LIMIT = 500_000;
-const INPUT_SIZE_LIMIT = 20 * 1024 * 1024;
 
 function localDateValue() {
   const now = new Date();
@@ -20,54 +17,17 @@ function formatInspectionDate(value: string) {
   return new Intl.DateTimeFormat("en", { day: "numeric", month: "short", year: "numeric", timeZone: "Africa/Harare" }).format(new Date(`${value.slice(0, 10)}T12:00:00`));
 }
 
-function makePhotoId() {
-  return typeof crypto !== "undefined" && "randomUUID" in crypto ? crypto.randomUUID() : `${Date.now()}-${Math.random().toString(16).slice(2)}`;
-}
-
-function imageBlob(canvas: HTMLCanvasElement, quality: number) {
-  return new Promise<Blob>((resolve, reject) => canvas.toBlob((blob) => blob ? resolve(blob) : reject(new Error("This photo could not be prepared.")), "image/jpeg", quality));
-}
-
-function dataUrlFromBlob(blob: Blob) {
-  return new Promise<string>((resolve, reject) => {
-    const reader = new FileReader();
-    reader.onload = () => typeof reader.result === "string" ? resolve(reader.result) : reject(new Error("This photo could not be read."));
-    reader.onerror = () => reject(new Error("This photo could not be read."));
-    reader.readAsDataURL(blob);
-  });
-}
-
-async function compressPhoto(file: File): Promise<InspectionPhoto> {
-  if (!file.type.startsWith("image/")) throw new Error(`${file.name} is not an image.`);
-  if (file.size > INPUT_SIZE_LIMIT) throw new Error(`${file.name} is larger than 20 MB.`);
-  const bitmap = await createImageBitmap(file);
-  try {
-    const maxDimension = 1440;
-    const ratio = Math.min(1, maxDimension / Math.max(bitmap.width, bitmap.height));
-    let width = Math.max(1, Math.round(bitmap.width * ratio));
-    let height = Math.max(1, Math.round(bitmap.height * ratio));
-    const canvas = document.createElement("canvas");
-    let blob: Blob;
-    for (let attempt = 0; attempt < 5; attempt += 1) {
-      canvas.width = width; canvas.height = height;
-      const context = canvas.getContext("2d");
-      if (!context) throw new Error("Photo compression is unavailable in this browser.");
-      context.drawImage(bitmap, 0, 0, width, height);
-      blob = await imageBlob(canvas, [0.76, 0.66, 0.56, 0.50, 0.44][attempt]);
-      if (blob.size <= PHOTO_SIZE_LIMIT) return { id: makePhotoId(), name: file.name, dataUrl: await dataUrlFromBlob(blob) };
-      width = Math.round(width * 0.82); height = Math.round(height * 0.82);
-    }
-    throw new Error(`${file.name} could not be reduced below 500 KB. Try a smaller photo.`);
-  } finally { bitmap.close(); }
-}
-
 function inspectionTitle(item: PrebookingInspection, customerName: string, vehicleName: string) {
   return `${customerName} · ${vehicleName}`;
 }
 
 function PhotoGrid({ photos }: { photos: InspectionPhoto[] }) {
   if (!photos.length) return <p className="inspection-no-photos">No photos attached.</p>;
-  return <div className="inspection-photo-grid">{photos.map((photo, index) => <a className="inspection-photo" key={photo.id} href={photo.dataUrl} target="_blank" rel="noreferrer" aria-label={`Open inspection photo ${index + 1}: ${photo.name}`}><img src={photo.dataUrl} alt={`Inspection ${index + 1}: ${photo.name}`} /><span>{index + 1}</span></a>)}</div>;
+  const marked = photos.filter((photo) => photo.marks?.length);
+  return <>
+    <div className="inspection-photo-grid">{photos.map((photo, index) => <a className="inspection-photo" key={photo.id} href={photo.dataUrl} target="_blank" rel="noreferrer" aria-label={`Open inspection photo ${index + 1}: ${photo.name}`}><img src={photo.dataUrl} alt={`Inspection ${index + 1}: ${photo.name}`} /><DamagePins marks={photo.marks} /><span>{index + 1}</span></a>)}</div>
+    {marked.length > 0 && <div className="inspection-damage-summary"><span>MARKED DAMAGE</span>{marked.map((photo) => <div key={photo.id}><small>Photo {photos.indexOf(photo) + 1}</small><DamageList marks={photo.marks} /></div>)}</div>}
+  </>;
 }
 
 export function InspectionWorkspace() {
@@ -78,9 +38,7 @@ export function InspectionWorkspace() {
   const [vehicleId, setVehicleId] = useState("");
   const [bookingId, setBookingId] = useState("");
   const [photos, setPhotos] = useState<InspectionPhoto[]>([]);
-  const [photoError, setPhotoError] = useState("");
   const [error, setError] = useState("");
-  const [busy, setBusy] = useState(false);
   const [saved, setSaved] = useState(false);
   const [checklist, setChecklist] = useState<InspectionChecklist>({});
   const [signature, setSignature] = useState("");
@@ -91,21 +49,7 @@ export function InspectionWorkspace() {
   const matchingBookings = bookings.filter((booking) => booking.customerId === customerId && booking.vehicleId === vehicleId);
 
   function resetForm() {
-    setOpen(false); setCustomerId(""); setVehicleId(""); setBookingId(""); setPhotos([]); setPhotoError(""); setError(""); setChecklist({}); setSignature(""); setSignatoryName("");
-  }
-
-  async function addPhotos(event: ChangeEvent<HTMLInputElement>) {
-    setPhotoError("");
-    const files = Array.from(event.currentTarget.files ?? []);
-    event.currentTarget.value = "";
-    const remaining = PHOTO_LIMIT - photos.length;
-    if (files.length > remaining) { setPhotoError(`You can attach up to ${PHOTO_LIMIT} photos per inspection.`); return; }
-    setBusy(true);
-    try {
-      const prepared = await Promise.all(files.map(compressPhoto));
-      setPhotos((current) => [...current, ...prepared]);
-    } catch (reason) { setPhotoError(reason instanceof Error ? reason.message : "Could not add these photos."); }
-    finally { setBusy(false); }
+    setOpen(false); setCustomerId(""); setVehicleId(""); setBookingId(""); setPhotos([]); setError(""); setChecklist({}); setSignature(""); setSignatoryName("");
   }
 
   function save(event: FormEvent<HTMLFormElement>) {
@@ -119,7 +63,7 @@ export function InspectionWorkspace() {
       ...(bookingId ? { bookingId } : {}), stage: "Pre-booking", inspectionDate: String(form.get("inspectionDate")),
       odometerKm: Number(form.get("odometerKm")), fuelPercent: Number(form.get("fuelPercent")),
       condition: String(form.get("condition")) as PrebookingInspection["condition"],
-      notes: String(form.get("notes")).trim(), photos, checklist, signatoryName: signatoryName.trim(), signatureDataUrl: signature, signedAt: new Date().toISOString(),
+      notes: String(form.get("notes")).trim(), photos: photos.map((photo) => ({ ...photo, marks: (photo.marks ?? []).map((mark) => ({ ...mark, note: mark.note?.trim() || undefined })) })), checklist, signatoryName: signatoryName.trim(), signatureDataUrl: signature, signedAt: new Date().toISOString(),
     });
     setSelectedId(created.id);
     setSaved(true); window.setTimeout(() => setSaved(false), 3500); resetForm();
@@ -141,7 +85,7 @@ export function InspectionWorkspace() {
             return <button className={`inspection-record${selected?.id === item.id ? " is-selected" : ""}`} type="button" key={item.id} onClick={() => setSelectedId(item.id)} aria-pressed={selected?.id === item.id}>
               <span className="inspection-record-icon"><svg viewBox="0 0 24 24"><path d="M8 4.5h8a2 2 0 0 1 2 2V20H6V6.5a2 2 0 0 1 2-2Z"/><path d="M9 10h6m-6 3.5h6"/></svg></span>
               <span className="inspection-record-copy"><strong>{inspectionTitle(item, renterName, carName)}</strong><small>{formatInspectionDate(item.inspectionDate)}{item.bookingId ? ` · ${bookings.find((booking) => booking.id === item.bookingId)?.reference ?? "Linked booking"}` : " · Pre-booking"}</small></span>
-              <span className="inspection-record-meta"><span className={`status-pill ${item.condition === "Needs attention" ? "status-cancelled" : item.condition === "Fair" ? "status-active" : "status-available"}`}>{item.condition}</span><small>{item.photos.length} {item.photos.length === 1 ? "photo" : "photos"}</small></span>
+              <span className="inspection-record-meta"><span className={`status-pill ${item.condition === "Needs attention" ? "status-cancelled" : item.condition === "Fair" ? "status-active" : "status-available"}`}>{item.condition}</span><small>{item.photos.length} {item.photos.length === 1 ? "photo" : "photos"}{countDamageMarks(item.photos) ? ` · ${countDamageMarks(item.photos)} marked` : ""}</small></span>
             </button>;
           })}</div>
         </section>
@@ -168,13 +112,10 @@ export function InspectionWorkspace() {
         <label className="form-field form-field-wide"><span>Condition notes</span><textarea name="notes" rows={3} placeholder="Describe existing damage, cleanliness, or other notes." /></label>
         <InspectionChecklistFields value={checklist} onChange={setChecklist} />
         <ClientSignature name={signatoryName} onNameChange={setSignatoryName} signature={signature} onSignatureChange={setSignature} initialName={customers.find((customer) => customer.id === customerId)?.name ?? ""} />
-        <div className="form-field form-field-wide"><span>Vehicle photos <small>(required · up to {PHOTO_LIMIT}, compressed for storage)</small></span><label className="inspection-upload"><input type="file" accept="image/*" capture="environment" multiple onChange={(event) => void addPhotos(event)} disabled={busy || photos.length >= PHOTO_LIMIT} /><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 8a2 2 0 0 1 2-2h2l1.5-2h5L16 6h2a2 2 0 0 1 2 2v10H4z"/><circle cx="12" cy="12" r="3"/></svg><strong>{busy ? "Preparing photos…" : "Take photos or choose from device"}</strong><small>JPEG images are resized and limited to about 500 KB each.</small></label>
-          {photos.length > 0 && <div className="inspection-upload-previews">{photos.map((photo) => <div className="inspection-upload-preview" key={photo.id}><img src={photo.dataUrl} alt={photo.name} /><button type="button" onClick={() => setPhotos((current) => current.filter((item) => item.id !== photo.id))} aria-label={`Remove ${photo.name}`}>×</button></div>)}</div>}
-          {photoError && <p className="form-error" role="alert">{photoError}</p>}
-        </div>
+        <InspectionPhotoField photos={photos} onChange={setPhotos} required />
         {error && <p className="form-error form-field-wide" role="alert">{error}</p>}
         <p className="form-hint form-field-wide">This inspection stays attached to the selected customer and vehicle. Photos are saved with the workspace record.</p>
-        <div className="form-field-wide"><div className="form-actions"><button className="button button-quiet" type="button" onClick={resetForm}>Cancel</button><button className="button button-primary" type="submit" disabled={busy}>{busy ? "Preparing photos…" : "Save inspection"}</button></div></div>
+        <div className="form-field-wide"><div className="form-actions"><button className="button button-quiet" type="button" onClick={resetForm}>Cancel</button><button className="button button-primary" type="submit" >Save inspection</button></div></div>
       </form>
     </WorkspaceDialog>}
   </AppShell>;

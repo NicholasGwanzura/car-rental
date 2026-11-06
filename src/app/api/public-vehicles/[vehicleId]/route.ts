@@ -15,6 +15,7 @@ export async function GET(_request: Request, { params }: { params: Promise<{ veh
       vehicleType: vehicle.vehicleType, dailyRate: vehicle.dailyRate,
       depositAmount: vehicle.depositAmount, mileageAllowanceKmPerDay: vehicle.mileageAllowanceKmPerDay,
       excessMileageRatePerKm: vehicle.excessMileageRatePerKm, transmission: vehicle.transmission,
+      fuelConsumptionLPer100Km: typeof vehicle.fuelConsumptionLPer100Km === "number" && Number.isFinite(vehicle.fuelConsumptionLPer100Km) ? vehicle.fuelConsumptionLPer100Km : null,
       imageDataUrl: typeof vehicle.imageDataUrl === "string" && vehicle.imageDataUrl.startsWith("data:image/jpeg;base64,") ? vehicle.imageDataUrl : null,
     } }, { headers: { "Cache-Control": "no-store" } });
   } catch (error) {

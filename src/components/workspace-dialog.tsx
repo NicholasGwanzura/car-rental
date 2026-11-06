@@ -25,7 +25,7 @@ export function WorkspaceDialog({
 }) {
   const dialogRef = useRef<HTMLElement>(null);
   const closeRef = useRef(onClose);
-  closeRef.current = onClose;
+  useEffect(() => { closeRef.current = onClose; }, [onClose]);
 
   useEffect(() => {
     const previousFocus = document.activeElement instanceof HTMLElement ? document.activeElement : null;

@@ -1,5 +1,7 @@
 import Image from "next/image";
+import Link from "next/link";
 import { PwaInstallButton } from "@/components/pwa-install-button";
+import type { PublicVehicleSummary } from "@/lib/public-vehicles";
 
 const contactNumbers = [
   { label: "Zimbabwe", display: "+263 772 313 286", tel: "+263772313286" },
@@ -15,7 +17,7 @@ const services = [
   { number: "06", title: "Monthly and long-term", detail: "Monthly hire and extended rental periods." },
 ];
 
-export function ClassicRidesHome() {
+export function ClassicRidesHome({ vehicles = [] }: { vehicles?: PublicVehicleSummary[] }) {
   return <main className="classic-site">
     <SiteHeader />
 
@@ -24,7 +26,7 @@ export function ClassicRidesHome() {
         <p className="site-eyebrow"><span /> CLASSIC RIDES · CAR RENTAL</p>
         <h1>Rent a car. <em>Set your dates.</em></h1>
         <p className="site-hero-intro">Choose a budget car, premium vehicle or SUV. Ask us about self-drive hire, a driver, airport transfers and longer rentals.</p>
-        <div className="site-hero-actions"><a className="site-button-primary" href="/contact">Check availability <span aria-hidden="true">→</span></a><a className="site-button-link" href="/services">See rental services</a></div>
+        <div className="site-hero-actions"><Link className="site-button-primary" href="/contact">Check availability <span aria-hidden="true">→</span></Link><Link className="site-button-link" href="/services">See rental services</Link></div>
         <div className="site-proof"><span>Self-drive</span><span aria-hidden="true">·</span><span>With a driver</span><span aria-hidden="true">·</span><span>Airport transfers</span></div>
       </div>
       <div className="site-hero-visual">
@@ -33,6 +35,8 @@ export function ClassicRidesHome() {
 
       </div>
     </section>
+
+    <SiteVehicles vehicles={vehicles} />
 
     <SiteFleet />
 
@@ -46,22 +50,40 @@ export function ClassicRidesHome() {
 
 export function SiteHeader() { return <>
     <header className="site-header">
-      <a className="site-brand" href="/" aria-label="Classic Rides home"><span className="site-brand-text"><strong>CLASSIC RIDES</strong><small>CAR RENTAL</small></span></a>
-      <nav className="site-nav" aria-label="Main navigation"><a href="/services">Services</a><a href="/cars">Fleet</a><a href="/contact">Contact</a><PwaInstallButton /></nav>
+      <Link className="site-brand" href="/" aria-label="Classic Rides home"><span className="site-brand-text"><strong>CLASSIC RIDES</strong><small>CAR RENTAL</small></span></Link>
+      <nav className="site-nav" aria-label="Main navigation"><Link href="/services">Services</Link><Link href="/cars">Fleet</Link><Link href="/contact">Contact</Link><PwaInstallButton /></nav>
       <div className="site-header-actions">
-        <a className="site-admin-link" href="/workspace">Admin</a>
-        <a className="site-header-cta" href="/contact">Enquire now <span aria-hidden="true">↗</span></a>
+        <Link className="site-admin-link" href="/workspace">Admin</Link>
+        <Link className="site-header-cta" href="/contact">Enquire now <span aria-hidden="true">↗</span></Link>
       </div>
     </header>
 </>; }
 
 export function SiteFooter() { return <>
-    <footer className="site-footer"><a className="site-footer-brand" href="/" aria-label="Classic Rides home">CLASSIC RIDES <small>CAR RENTAL</small></a><span>Vehicle hire and transfers.</span><a href="mailto:sales@classicrides.online">sales@classicrides.online</a><a href="/workspace">Admin workspace <span aria-hidden="true">↗</span></a></footer>
+    <footer className="site-footer"><Link className="site-footer-brand" href="/" aria-label="Classic Rides home">CLASSIC RIDES <small>CAR RENTAL</small></Link><span>Vehicle hire and transfers.</span><a href="mailto:sales@classicrides.online">sales@classicrides.online</a><Link href="/workspace">Admin workspace <span aria-hidden="true">↗</span></Link></footer>
 </>; }
 
 export function SiteFleet() { return <>
     <section className="site-fleet-strip" id="fleet"><div><span className="site-section-kicker">VEHICLE TYPES</span><h2>Budget, Premium and SUV.</h2></div><div className="fleet-types"><article><span>01</span><strong>Budget</strong><small>Everyday car hire</small></article><article><span>02</span><strong>Premium</strong><small>Premium vehicle hire</small></article><article><span>03</span><strong>SUV</strong><small>More seats and luggage space</small></article></div></section>
 </>; }
+
+function money(value: number) { return new Intl.NumberFormat("en-US", { style: "currency", currency: "USD", maximumFractionDigits: 0 }).format(value); }
+
+export function SiteVehicles({ vehicles }: { vehicles: PublicVehicleSummary[] }) {
+  if (!vehicles.length) return null;
+  return <section className="site-vehicles" id="vehicles">
+    <div className="site-section-heading"><div><span className="site-section-kicker">AVAILABLE NOW</span><h2>Our vehicles.</h2></div><p>Choose a vehicle and send your dates. We’ll confirm availability before your booking is final.</p></div>
+    <div className="site-vehicle-grid">{vehicles.map((vehicle) => <a className="site-vehicle-card" key={vehicle.id} href={`/rent/${encodeURIComponent(vehicle.id)}`}>
+      <div className="site-vehicle-photo">{vehicle.hasImage ? <Image src={`/api/public-vehicles/${encodeURIComponent(vehicle.id)}/image`} alt={`${vehicle.make} ${vehicle.model}`} width={640} height={420} unoptimized /> : <span aria-hidden="true">{vehicle.make.slice(0, 1)}</span>}<em>{vehicle.vehicleType}</em></div>
+      <div className="site-vehicle-body">
+        <small>{vehicle.year || ""}</small>
+        <h3>{vehicle.make} {vehicle.model}</h3>
+        <ul className="site-vehicle-specs">{vehicle.transmission && <li>{vehicle.transmission}</li>}{vehicle.fuelConsumptionLPer100Km !== null && <li>{vehicle.fuelConsumptionLPer100Km} L/100 km</li>}{vehicle.mileageAllowanceKmPerDay > 0 && <li>{vehicle.mileageAllowanceKmPerDay} km/day included</li>}</ul>
+        <div className="site-vehicle-foot"><span><strong>{money(vehicle.dailyRate)}</strong> / day</span><span className="site-vehicle-cta">Pre-book <span aria-hidden="true">→</span></span></div>
+      </div>
+    </a>)}</div>
+  </section>;
+}
 
 export function SiteServices() { return <>
     <section className="site-services" id="services"><div className="site-section-heading"><div><span className="site-section-kicker">OUR SERVICES</span><h2>Rental services.</h2></div><p>Choose a rental service, then contact us with your dates for availability and a quote.</p></div><div className="site-service-grid">{services.map((service) => <article className="site-service-card" key={service.number}><span>{service.number}</span><h3>{service.title}</h3><p>{service.detail}</p><a href="mailto:sales@classicrides.online?subject=Classic%20Rides%20service%20enquiry" aria-label={`Ask about ${service.title}`}>Ask us <span aria-hidden="true">↗</span></a></article>)}</div><p className="site-advance-note"><span aria-hidden="true">✳</span> Ask about rates for advance and longer bookings.</p></section>

@@ -15,6 +15,8 @@ export type Vehicle = {
   mileageAllowanceKmPerDay: number;
   excessMileageRatePerKm: number;
   transmission: string;
+  /** Average fuel consumption in litres per 100 km. */
+  fuelConsumptionLPer100Km?: number;
   status: "Available" | "Unavailable";
   imageDataUrl?: string;
   createdAt: string;
@@ -29,6 +31,7 @@ export type Customer = {
   nextOfKinName?: string;
   nextOfKinPhone?: string;
   idNumber?: string;
+  address?: string;
   idPhotoDataUrl?: string;
   idPhotoName?: string;
   createdAt: string;
@@ -74,7 +77,10 @@ export type MaintenanceJob = {
   note: string;
 };
 
-export type InspectionPhoto = { id: string; name: string; dataUrl: string };
+export const inspectionDamageTypes = ["Dent", "Scratch", "Crack", "Chip", "Missing part", "Other"] as const;
+export type InspectionDamageType = typeof inspectionDamageTypes[number];
+export type InspectionDamageMark = { id: string; x: number; y: number; type: InspectionDamageType; note?: string };
+export type InspectionPhoto = { id: string; name: string; dataUrl: string; marks?: InspectionDamageMark[] };
 export type InspectionCheckStatus = "ok" | "attention" | "na";
 export type InspectionChecklist = Record<string, InspectionCheckStatus>;
 export type PrebookingInspection = {
@@ -96,7 +102,7 @@ export type PrebookingInspection = {
   createdAt: string;
 };
 
-export type CompanyProfile = { name: string; email: string; phone: string; address: string; invoicePrefix: string; paymentInstructions: string };
+export type CompanyProfile = { name: string; email: string; phone: string; address: string; invoicePrefix: string; paymentInstructions: string; contractTerms?: string };
 type StoreData = { vehicles: Vehicle[]; customers: Customer[]; bookings: Booking[]; maintenance: MaintenanceJob[]; inspections: PrebookingInspection[]; company: CompanyProfile };
 type SaveStatus = "idle" | "saving" | "saved" | "error";
 export type WorkspaceUser = { id: string; email: string; name: string; role: "super_admin" | "manager" | "sales" };
@@ -107,9 +113,13 @@ type RentalContextValue = StoreData & {
   retrySave: () => void;
   addVehicle: (vehicle: Omit<Vehicle, "id" | "createdAt">) => void;
   updateVehicle: (id: string, changes: Partial<Vehicle>) => void;
+  deleteVehicle: (id: string) => void;
   addCustomer: (customer: Omit<Customer, "id" | "createdAt">) => void;
+  deleteCustomer: (id: string) => void;
   addBooking: (booking: Omit<Booking, "id" | "reference" | "createdAt" | "status">) => Booking;
   updateBooking: (id: string, changes: Partial<Booking>) => void;
+  deleteBooking: (id: string) => void;
+  canDelete: boolean;
   addMaintenance: (job: Omit<MaintenanceJob, "id">) => void;
   updateMaintenance: (id: string, changes: Partial<MaintenanceJob>) => void;
   addInspection: (inspection: Omit<PrebookingInspection, "id" | "createdAt">) => PrebookingInspection;
@@ -337,6 +347,10 @@ export function RentalDataProvider({ children }: { children: ReactNode }) {
     retrySave,
     addVehicle: (vehicle) => updateData((current) => ({ ...current, vehicles: [{ ...vehicle, id: makeId(), createdAt: new Date().toISOString() }, ...current.vehicles] })),
     updateVehicle: (id, changes) => updateData((current) => ({ ...current, vehicles: current.vehicles.map((vehicle) => vehicle.id === id ? { ...vehicle, ...changes } : vehicle) })),
+    deleteVehicle: (id) => updateData((current) => ({ ...current, vehicles: current.vehicles.filter((vehicle) => vehicle.id !== id), maintenance: current.maintenance.filter((job) => job.vehicleId !== id) })),
+    deleteCustomer: (id) => updateData((current) => ({ ...current, customers: current.customers.filter((customer) => customer.id !== id) })),
+    deleteBooking: (id) => updateData((current) => ({ ...current, bookings: current.bookings.filter((booking) => booking.id !== id), inspections: current.inspections.map((inspection) => inspection.bookingId === id ? { ...inspection, bookingId: undefined } : inspection) })),
+    canDelete: !currentUser || currentUser.role !== "sales",
     addCustomer: (customer) => updateData((current) => ({ ...current, customers: [{ ...customer, id: makeId(), createdAt: new Date().toISOString() }, ...current.customers] })),
     addBooking: (booking) => {
       const created: Booking = { ...booking, depositStatus: (booking.depositAmount ?? 0) > 0 ? "Due" : "None", id: makeId(), reference: `BK-${String(Date.now()).slice(-6)}`, status: "Confirmed", createdAt: new Date().toISOString() };
