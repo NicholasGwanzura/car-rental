@@ -24,16 +24,15 @@ export function ClassicRidesHome({ vehicles = [] }: { vehicles?: PublicVehicleSu
 
     <section className="site-hero" id="home">
       <div className="site-hero-copy">
-        <p className="site-eyebrow"><span /> CLASSIC RIDES · CAR RENTAL</p>
-        <h1>Rent a car. <em>Set your dates.</em></h1>
-        <p className="site-hero-intro">Choose a budget car, premium vehicle or SUV. Ask us about self-drive hire, a driver, airport transfers and longer rentals.</p>
-        <div className="site-hero-actions"><Link className="site-button-primary" href="/contact">Check availability <span aria-hidden="true">→</span></Link><Link className="site-button-link" href="/services">See rental services</Link></div>
-        <div className="site-proof"><span>Self-drive</span><span aria-hidden="true">·</span><span>With a driver</span><span aria-hidden="true">·</span><span>Airport transfers</span></div>
+        <p className="site-eyebrow"><span /> CAR RENTAL IN HARARE</p>
+        <h1>Rent the car. <em>Keep your plans.</em></h1>
+        <p className="site-hero-intro">Browse budget cars, premium vehicles and SUVs. Send us your dates and we’ll confirm availability and the price before you book.</p>
+        <div className="site-hero-actions"><Link className="site-button-primary" href="/cars">Browse vehicles <span aria-hidden="true">→</span></Link><Link className="site-button-link" href="/contact">Ask for a quote <span aria-hidden="true">↗</span></Link></div>
+        <div className="site-proof"><span>Self-drive hire</span><span aria-hidden="true">·</span><span>Chauffeur service</span><span aria-hidden="true">·</span><span>Airport transfers</span></div>
       </div>
       <div className="site-hero-visual">
         <Image src="/classic-rides-fleet.png" alt="Classic Rides silver SUV and dark sedan ready for hire" width={1536} height={1024} priority sizes="(max-width: 760px) 100vw, 58vw" />
-
-
+        <div className="site-hero-image-label"><span>CLASSIC RIDES</span><strong>Budget · Premium · SUV</strong></div>
       </div>
     </section>
 

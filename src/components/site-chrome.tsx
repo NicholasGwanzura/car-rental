@@ -52,6 +52,7 @@ export function SiteHeader() {
       <nav className="cr-nav" aria-label="Main navigation">{links.map((link) => <Link key={link.href} href={link.href} className={isActive(pathname, link.href) ? "is-active" : undefined} aria-current={isActive(pathname, link.href) ? "page" : undefined}>{link.label}</Link>)}</nav>
       <div className="cr-header-actions">
         <a className="cr-phone" href={`tel:${phones[0].tel}`}><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 4h3.5l1.7 4.3-2.2 1.4a11 11 0 0 0 6.3 6.3l1.4-2.2L20 15.5V19a1.5 1.5 0 0 1-1.6 1.5A16.5 16.5 0 0 1 3.5 5.6 1.5 1.5 0 0 1 5 4Z" /></svg><span>{phones[0].display}</span></a>
+        <Link className="cr-admin-login" href="/workspace">Admin login</Link>
         <Link className="cr-cta" href="/contact">Book a car <span aria-hidden="true">→</span></Link>
         <button className="cr-menu-toggle" type="button" aria-expanded={open} aria-controls="cr-mobile-menu" aria-label={open ? "Close menu" : "Open menu"} onClick={() => setOpen((value) => !value)}><span /><span /></button>
       </div>
